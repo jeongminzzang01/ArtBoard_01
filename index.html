@@ -207,8 +207,8 @@ const TEAM_TAG_COLORS = {
 const TEAM_TAG_NAMES = Object.keys(TEAM_TAG_COLORS);
 
 const MILESTONE_STATUS = {
-  live: { grad: "linear-gradient(135deg, #4a5a75, #6e6088)", gradLight: "linear-gradient(135deg, #2a6e50, #1a607a)", label: "라이브" },
-  upcoming: { grad: "linear-gradient(135deg, #404860, #5a5070)", gradLight: "linear-gradient(135deg, #2a5080, #4a3e80)", label: "라이브 예정" },
+  live: { grad: "#2d6b4f", gradLight: "#1a7f37", border: "#3a8a5e", borderLight: "#1a7f37", label: "라이브" },
+  upcoming: { grad: "#3b4d80", gradLight: "#3451b2", border: "#5068a8", borderLight: "#3451b2", label: "라이브 예정" },
 };
 
 const themes = {
@@ -1013,7 +1013,7 @@ function ArtSchedule() {
           {/* 좌측 패널 */}
           <div style={{ width: leftW, flexShrink: 0, borderRight: `2px solid ${t.border}`, display: "flex", flexDirection: "column", background: t.panelBg, position: "relative" }}>
             <div style={{ height: 70, borderBottom: `2px solid ${t.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: t.accent, background: t.headerBg }}>팀 / 담당자</div>
-            <div style={{ height: 26, borderBottom: `1px solid ${t.border}`, display: "flex", alignItems: "center", paddingLeft: 8, fontSize: 10, color: t.textDim, background: t.headerBg }}>마일스톤</div>
+            <div onClick={() => { let mx = 0; milestones.forEach(m => { const mt = m.name.match(/^M(\d+)$/); if (mt) mx = Math.max(mx, +mt[1]); }); let newStart; if (milestones.length > 0) { const lastEnd = milestones.reduce((max, m) => m.endDate > max ? m.endDate : max, ""); let d = addDays(new Date(lastEnd), 1); while (isWeekend(d)) d = addDays(d, 1); newStart = fmt(d); } else { newStart = firstDateStr; } setEditingMilestone({ id: null, name: `M${mx + 1}`, startDate: newStart, endDate: fmt(addDays(new Date(newStart), 28)), status: "upcoming" }); setShowMilestoneModal(true); }} style={{ height: 26, borderBottom: `1px solid ${t.border}`, display: "flex", alignItems: "center", paddingLeft: 8, fontSize: 10, color: t.textDim, background: t.headerBg, cursor: "pointer" }} title="클릭하여 마일스톤 추가">마일스톤 <LuIcon name="plus" size={10} style={{ marginLeft: 4, opacity: 0.5 }} /></div>
             <div ref={leftBodyRef} style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }} onScroll={() => syncScroll("left")}>
               {teamSections.map(({ team, idx: tIdx }) => {
                 const isDragOver = teamDragOverIdx === tIdx && teamDragIdx !== tIdx;
@@ -1084,13 +1084,13 @@ function ArtSchedule() {
                   {dates.map((d, i) => { const hol = getHoliday(d); const isCustom = customHolidays.includes(fmt(d)); const isToday = fmt(d) === todayStr; const isSel = headerSelect && headerSelect.startIdx !== headerSelect.endIdx && i >= Math.min(headerSelect.startIdx, headerSelect.endIdx) && i <= Math.max(headerSelect.startIdx, headerSelect.endIdx); return <div key={i} title={hol || "클릭하여 휴무일 지정"} onClick={(e) => { e.stopPropagation(); setHeaderSelect(null); toggleCustomHoliday(d); }} style={{ width: CELL_W, textAlign: "center", fontSize: 11, lineHeight: "24px", color: isSel ? "#fff" : isToday ? "#fff" : hol ? t.holidayText : t.text, background: isSel ? t.accent + "88" : hol ? t.holidayBg : t.headerBg, borderRight: `1px solid ${t.border}`, fontWeight: isToday ? 800 : hol ? 700 : 600, cursor: KOREAN_HOLIDAYS[fmt(d)] ? "default" : "pointer", borderBottom: isCustom ? `2px solid ${t.accentAlt}` : "none", position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>{isToday ? <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 20, height: 20, borderRadius: "50%", background: "#a05560", color: "#fff", fontSize: 11, fontWeight: 800, lineHeight: 1 }}>{d.getDate()}</span> : d.getDate()}</div>; })}
                   {hiddenGaps.map((gap, gi) => <div key={`ng${gi}`} onClick={(e) => { e.stopPropagation(); unhideGap(gap.afterIdx); }} style={{ position: "absolute", left: gap.pos - 8, top: 2, width: 16, height: 20, background: t.accentAlt, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, color: "#fff", fontWeight: 700, cursor: "pointer", zIndex: 20, opacity: 0.7 }} title={`${gap.count}일 숨김 - 클릭하여 표시`}>{gap.count}</div>)}
                 </div>
-                <div style={{ height: 26, position: "relative", borderBottom: `1px solid ${t.border}`, width: dates.length * CELL_W, backgroundImage: `repeating-linear-gradient(to right, transparent, transparent ${CELL_W - 1}px, ${t.border}22 ${CELL_W - 1}px, ${t.border}22 ${CELL_W}px)` }}>
+                <div onClick={(e) => { const ci = Math.floor((e.nativeEvent.offsetX != null ? e.nativeEvent.offsetX : (e.clientX - e.currentTarget.getBoundingClientRect().left)) / CELL_W); if (ci >= 0 && ci < dates.length) { const clickDate = fmt(dates[ci]); let mx = 0; milestones.forEach(m => { const mt = m.name.match(/^M(\d+)$/); if (mt) mx = Math.max(mx, +mt[1]); }); setEditingMilestone({ id: null, name: `M${mx + 1}`, startDate: clickDate, endDate: fmt(addDays(new Date(clickDate), 28)), status: "upcoming" }); setShowMilestoneModal(true); } }} style={{ height: 26, position: "relative", borderBottom: `1px solid ${t.border}`, width: dates.length * CELL_W, backgroundImage: `repeating-linear-gradient(to right, transparent, transparent ${CELL_W - 1}px, ${t.border}22 ${CELL_W - 1}px, ${t.border}22 ${CELL_W}px)`, cursor: "pointer" }}>
                   {(() => { const ti = dateToCol(todayStr); return ti >= 0 ? <div style={{ position: "absolute", left: ti * CELL_W + Math.floor(CELL_W / 2) - 1, top: 0, width: 0, height: 26, borderLeft: "2px dashed #a05560", opacity: 0.45, pointerEvents: "none", zIndex: 2 }} /> : null; })()}
                   {milestonePositions.map((ms) => {
                     const mst = MILESTONE_STATUS[ms.status] || MILESTONE_STATUS.upcoming;
                     const msGrad = mode === "dark" ? mst.grad : mst.gradLight;
                     return (
-                      <div key={ms.id} onClick={() => { setEditingMilestone(ms); setShowMilestoneModal(true); }}
+                      <div key={ms.id} onClick={(e) => { e.stopPropagation(); setEditingMilestone(ms); setShowMilestoneModal(true); }}
                         style={{ position: "absolute", top: 3, left: ms.sCol * CELL_W + 2, width: (ms.eCol - ms.sCol + 1) * CELL_W - 4, height: 20, background: msGrad, borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: mode === "dark" ? "#c0c4cc" : "#fff", cursor: "pointer", boxShadow: `0 2px 8px ${t.shadowColor}`, letterSpacing: 1 }}>{ms.name}</div>
                     );
                   })}
@@ -1548,7 +1548,7 @@ function ArtSchedule() {
       )}
       {showMilestoneModal && editingMilestone && (
         <Modal t={t} onClose={() => { setShowMilestoneModal(false); setEditingMilestone(null); }} title={editingMilestone.id ? "마일스톤 수정" : "새 마일스톤"}>
-          <MilestoneForm t={t} ms={editingMilestone} onSave={saveMilestone} onDelete={editingMilestone.id ? () => deleteMilestone(editingMilestone.id) : null} />
+          <MilestoneForm t={t} mode={mode} ms={editingMilestone} onSave={saveMilestone} onDelete={editingMilestone.id ? () => deleteMilestone(editingMilestone.id) : null} />
         </Modal>
       )}
       {showTeamModal && (
@@ -1679,7 +1679,7 @@ function TaskForm({ t, mode, task, onSave, onDelete, members }) {
   );
 }
 
-function MilestoneForm({ t, ms, onSave, onDelete }) {
+function MilestoneForm({ t, mode, ms, onSave, onDelete }) {
   const [f, setF] = useState({ ...ms, status: ms.status || "upcoming" });
   const up = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const iS = { width: "100%", padding: "10px 12px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.text, borderRadius: 7, fontSize: 14, marginTop: 6, boxSizing: "border-box", outline: "none" };
@@ -1695,7 +1695,7 @@ function MilestoneForm({ t, ms, onSave, onDelete }) {
         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
           {Object.entries(MILESTONE_STATUS).map(([k, v]) => (
             <button key={k} onClick={() => up("status", k)}
-              style={{ flex: 1, padding: "10px 0", background: f.status === k ? v.grad : t.inputBg, border: `2px solid ${f.status === k ? (k === "live" ? "#4a5a75" : "#5a5070") : t.inputBorder}`, borderRadius: 7, color: f.status === k ? "#fff" : t.textDim, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>{v.label}</button>
+              style={{ flex: 1, padding: "10px 0", background: f.status === k ? (mode === "dark" ? v.grad : v.gradLight) : t.inputBg, border: `2px solid ${f.status === k ? (mode === "dark" ? v.border : v.borderLight) : t.inputBorder}`, borderRadius: 7, color: f.status === k ? "#fff" : t.textDim, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>{v.label}</button>
           ))}
         </div>
       </label>
