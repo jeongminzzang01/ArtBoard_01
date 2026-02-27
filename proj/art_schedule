@@ -18,7 +18,6 @@ const KOREAN_HOLIDAYS = {
 const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 const DAY_NAMES_KR = ["일","월","화","수","목","금","토"];
 const fmtDateKR = (ds) => { if (!ds) return ""; const d = new Date(ds+"T00:00:00"); return `${d.getMonth()+1}/${d.getDate()}(${DAY_NAMES_KR[d.getDay()]})`; };
-const dayNames = ["일", "월", "화", "수", "목", "금", "토"];
 const addDays = (d, n) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
 const isHoliday = (d) => KOREAN_HOLIDAYS[fmt(d)] || null;
 const isWeekend = (d) => d.getDay() === 0 || d.getDay() === 6;
@@ -92,13 +91,14 @@ const fmtDday = (diff) => {
   if (diff > 0) return `D-${diff}`;
   return `D+${Math.abs(diff)}`;
 };
-const ddayColor = (diff) => {
+const ddayColor = (diff, mode = "dark") => {
   if (diff === null || diff === undefined) return {};
-  if (diff < 0) return { color: "#586070", textDecoration: "line-through" };
-  if (diff === 0) return { color: "#e8d0d3", background: "#a05560", borderRadius: 4, padding: "1px 5px", fontWeight: 700 };
-  if (diff <= 6) return { color: "#a05560", fontWeight: 700 };
-  if (diff <= 13) return { color: "#9e8548" };
-  return { color: "#586070" };
+  const dk = mode === "dark";
+  if (diff < 0) return { color: dk ? "#586070" : "#8c959f", textDecoration: "line-through" };
+  if (diff === 0) return { color: dk ? "#e8d0d3" : "#fff", background: dk ? "#a05560" : "#cf222e", borderRadius: 4, padding: "1px 5px", fontWeight: 700 };
+  if (diff <= 6) return { color: dk ? "#a05560" : "#cf222e", fontWeight: 700 };
+  if (diff <= 13) return { color: dk ? "#9e8548" : "#9a6700" };
+  return { color: dk ? "#586070" : "#656d76" };
 };
 
 // pulse 애니메이션 주입
@@ -127,6 +127,7 @@ function genThursdays(months) {
 }
 
 const DEFAULT_CELL_W = 32, DEFAULT_CELL_H = 34, DEFAULT_LEFT_W = 190, TEAM_W_RATIO = 0.37;
+const RADIUS = { sm: 6, md: 8, lg: 12 };
 const EMAIL_DOMAIN = "@madngine.com";
 const ZOOM_LEVELS = [
   { cellW: 24, cellH: 26, font: 9, nameFont: 10, teamFont: 9, label: "S" },
@@ -177,8 +178,8 @@ const TEAM_TAG_COLORS = {
 const TEAM_TAG_NAMES = Object.keys(TEAM_TAG_COLORS);
 
 const MILESTONE_STATUS = {
-  live: { grad: "#2d6b4f", gradLight: "#1a7f37", border: "#3a8a5e", borderLight: "#1a7f37", label: "라이브" },
-  upcoming: { grad: "#3b4d80", gradLight: "#3451b2", border: "#5068a8", borderLight: "#3451b2", label: "라이브 예정" },
+  live: { bg: "#2d6b4f", bgLight: "#1a7f37", border: "#3a8a5e", borderLight: "#1a7f37", label: "라이브" },
+  upcoming: { bg: "#3b4d80", bgLight: "#3451b2", border: "#5068a8", borderLight: "#3451b2", label: "라이브 예정" },
 };
 
 const themes = {
@@ -187,7 +188,7 @@ const themes = {
     accentAlt: "#a05560", text: "#c4c8d0", textDim: "#6a7888", border: "#282b38",
     holidayBg: "rgba(160,85,96,0.06)", holidayText: "#a05560",
     inputBg: "#1e2029", inputBorder: "#323544", hoverBg: "#2d3044",
-    milestoneGrad: "linear-gradient(135deg, #4a5a75, #6e6088)",
+    milestoneGrad: "linear-gradient(135deg, #3d4f6e, #5a5080)",
     shadowColor: "rgba(0,0,0,0.35)", dragBg: "rgba(120,137,168,0.10)",
     teamDragBg: "rgba(120,137,168,0.06)", teamDragBorder: "#566680",
     tableBg: "#191b22", tableAlt: "#222430", tableHover: "#2d3044",
@@ -198,7 +199,7 @@ const themes = {
     accentAlt: "#cf222e", text: "#1f2328", textDim: "#656d76", border: "#d0d7de",
     holidayBg: "rgba(207,34,46,0.05)", holidayText: "#cf222e",
     inputBg: "#ffffff", inputBorder: "#d0d7de", hoverBg: "#eaeef2",
-    milestoneGrad: "linear-gradient(135deg, #2a6e50, #1a607a)",
+    milestoneGrad: "linear-gradient(135deg, #4a6a9a, #7060a0)",
     shadowColor: "rgba(31,35,40,0.08)", dragBg: "rgba(9,105,218,0.1)",
     teamDragBg: "rgba(9,105,218,0.06)", teamDragBorder: "#0969da",
     tableBg: "#ffffff", tableAlt: "#f6f8fa", tableHover: "#eaeef2",
@@ -327,6 +328,7 @@ export default function ArtSchedule() {
   const [showMemberModal, setShowMemberModal] = useState(false);
   const [targetTeamId, setTargetTeamId] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
   const [dragState, setDragState] = useState(null);
   const [teamDragIdx, setTeamDragIdx] = useState(null);
   const [teamDragOverIdx, setTeamDragOverIdx] = useState(null);
@@ -591,9 +593,36 @@ export default function ArtSchedule() {
 
   const addTeam = (name) => { pushUndo("팀 추가"); setTeams((p) => [...p, { id: "t_" + Date.now(), name, members: [] }]); setShowTeamModal(false); };
   const renameTeam = (teamId, name) => { pushUndo("팀 이름 변경"); setTeams((p) => p.map((x) => x.id === teamId ? { ...x, name } : x)); setShowTeamModal(false); setEditingTeam(null); };
-  const removeTeam = (teamId) => { pushUndo("팀 삭제"); setTeams((p) => { const mIds = p.find((x) => x.id === teamId)?.members.map((m) => m.id) || []; setTasks((pt) => pt.filter((x) => !mIds.includes(x.memberId))); return p.filter((x) => x.id !== teamId); }); };
+  const removeTeam = (teamId) => {
+    const team = teams.find(x => x.id === teamId);
+    const memberCount = team?.members.length || 0;
+    const taskCount = tasks.filter(tk => team?.members.some(m => m.id === tk.memberId)).length;
+    setConfirmDelete({
+      title: "팀 삭제",
+      message: `"${team?.name}" 팀을 삭제하시겠습니까?${memberCount > 0 ? `\n소속 인원 ${memberCount}명과 관련 일정 ${taskCount}건이 함께 삭제됩니다.` : ""}`,
+      onConfirm: () => {
+        pushUndo("팀 삭제");
+        setTeams((p) => { const mIds = p.find((x) => x.id === teamId)?.members.map((m) => m.id) || []; setTasks((pt) => pt.filter((x) => !mIds.includes(x.memberId))); return p.filter((x) => x.id !== teamId); });
+        setConfirmDelete(null);
+      }
+    });
+  };
   const addMember = (teamId, name, email) => { pushUndo("인원 추가"); setTeams((p) => p.map((x) => x.id === teamId ? { ...x, members: [...x.members, { id: "m_" + Date.now(), name, email: email || "", role: "사원", concurrent: false, roles: ["사원"] }] } : x)); setShowMemberModal(false); };
-  const removeMember = (teamId, memberId) => { pushUndo("인원 제거"); setTeams((p) => p.map((x) => x.id === teamId ? { ...x, members: x.members.filter((m) => m.id !== memberId) } : x)); setTasks((p) => p.filter((x) => x.memberId !== memberId)); };
+  const removeMember = (teamId, memberId) => {
+    const team = teams.find(x => x.id === teamId);
+    const member = team?.members.find(m => m.id === memberId);
+    const taskCount = tasks.filter(tk => tk.memberId === memberId).length;
+    setConfirmDelete({
+      title: "인원 제거",
+      message: `"${member?.name}"님을 제거하시겠습니까?${taskCount > 0 ? `\n관련 일정 ${taskCount}건이 함께 삭제됩니다.` : ""}`,
+      onConfirm: () => {
+        pushUndo("인원 제거");
+        setTeams((p) => p.map((x) => x.id === teamId ? { ...x, members: x.members.filter((m) => m.id !== memberId) } : x));
+        setTasks((p) => p.filter((x) => x.memberId !== memberId));
+        setConfirmDelete(null);
+      }
+    });
+  };
 
   const handleTeamDragStart = (e, idx) => { setTeamDragIdx(idx); e.dataTransfer.effectAllowed = "move"; };
   const handleTeamDragOver = (e, idx) => { e.preventDefault(); setTeamDragOverIdx(idx); };
@@ -789,7 +818,14 @@ export default function ArtSchedule() {
   }, []);
 
   useEffect(() => { const cl = () => { setContextMenu(null); setHeaderSelect(null); }; window.addEventListener("click", cl); return () => window.removeEventListener("click", cl); }, []);
-  useEffect(() => { const h = (e) => { if ((e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); undo(); } }; window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); }, [undo]);
+  useEffect(() => {
+    const h = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); undo(); }
+      if (e.key === "Escape") { setContextMenu(null); setHeaderSelect(null); }
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [undo]);
   useEffect(() => {
     const g = gridRef.current; const hs = document.getElementById("hdr-scroll");
     const handler = (e) => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.preventDefault(); const amt = e.deltaY; if (g) { g.scrollLeft += amt; } if (hs) { hs.scrollLeft = g ? g.scrollLeft : hs.scrollLeft + amt; } } };
@@ -886,7 +922,7 @@ export default function ArtSchedule() {
 
   const tabBtn = (id, label, iconName) => (
     <button key={id} onClick={() => setTab(id)} title={label}
-      style={{ padding: isMobile ? "6px 10px" : "5px 16px", background: tab === id ? t.btnBg : "transparent", border: `1px solid ${tab === id ? t.btnBg : (mode === "dark" ? "#323544" : t.border)}`, borderRadius: 6, color: tab === id ? t.btnFg : t.textDim, cursor: "pointer", fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 5 }}>
+      style={{ padding: isMobile ? "6px 10px" : "5px 16px", background: tab === id ? t.btnBg : "transparent", border: `1px solid ${tab === id ? t.btnBg : (mode === "dark" ? "#323544" : t.border)}`, borderRadius: RADIUS.sm, color: tab === id ? t.btnFg : t.textDim, cursor: "pointer", fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 5 }}>
       <LuIcon name={iconName} size={14} />{!isMobile && label}
     </button>
   );
@@ -1041,7 +1077,7 @@ export default function ArtSchedule() {
                   {dates.map((d, i) => { const hol = getHoliday(d); const isToday = fmt(d) === todayStr; const isSel = headerSelect && headerSelect.startIdx !== headerSelect.endIdx && i >= Math.min(headerSelect.startIdx, headerSelect.endIdx) && i <= Math.max(headerSelect.startIdx, headerSelect.endIdx); return <div key={i} title={hol || "클릭: 휴무일 지정 / 드래그: 날짜 숨기기"}
                     onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setHeaderSelect({ startIdx: i, endIdx: i, dragging: true }); }}
                     onMouseEnter={() => { if (headerSelect?.dragging) setHeaderSelect(p => ({ ...p, endIdx: i })); }}
-                    style={{ width: CELL_W, textAlign: "center", fontSize: 10, lineHeight: "24px", color: isSel ? "#fff" : isToday ? t.accent : hol ? t.holidayText : t.textDim, background: isSel ? t.accent : isToday ? (mode === "dark" ? "rgba(120,137,168,0.15)" : "rgba(74,85,224,0.1)") : hol ? t.holidayBg : t.headerBg, borderRight: `1px solid ${t.border}`, fontWeight: isToday || hol ? 700 : 400, cursor: "pointer", userSelect: "none" }}>{dayNames[d.getDay()]}</div>; })}
+                    style={{ width: CELL_W, textAlign: "center", fontSize: 10, lineHeight: "24px", color: isSel ? "#fff" : isToday ? t.accent : hol ? t.holidayText : t.textDim, background: isSel ? t.accent : isToday ? (mode === "dark" ? "rgba(120,137,168,0.15)" : "rgba(74,85,224,0.1)") : hol ? t.holidayBg : t.headerBg, borderRight: `1px solid ${t.border}`, fontWeight: isToday || hol ? 700 : 400, cursor: "pointer", userSelect: "none" }}>{DAY_NAMES_KR[d.getDay()]}</div>; })}
                   {headerSelect && !headerSelect.dragging && headerSelect.startIdx !== headerSelect.endIdx && (() => { const lo = Math.min(headerSelect.startIdx, headerSelect.endIdx); const hi = Math.max(headerSelect.startIdx, headerSelect.endIdx); const cnt = hi - lo + 1; const cx = ((lo + hi + 1) / 2) * CELL_W; return (
                     <div onClick={(e) => e.stopPropagation()} style={{ position: "absolute", left: Math.max(0, cx - 70), top: 26, zIndex: 100, display: "flex", alignItems: "center", gap: 6, background: t.panelBg, border: `1px solid ${t.border}`, borderRadius: 8, padding: "3px 10px", boxShadow: `0 4px 16px ${t.shadowColor}` }}>
                       <span style={{ fontSize: 11, color: t.text, fontWeight: 600 }}>{cnt}일</span>
@@ -1051,17 +1087,17 @@ export default function ArtSchedule() {
                   {hiddenGaps.map((gap, gi) => <div key={`dg${gi}`} onClick={(e) => { e.stopPropagation(); unhideGap(gap.afterIdx); }} style={{ position: "absolute", left: gap.pos - 8, top: 2, width: 16, height: 20, background: t.accentAlt, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, color: "#fff", fontWeight: 700, cursor: "pointer", zIndex: 20, boxShadow: `0 1px 4px ${t.shadowColor}` }} title={`${gap.count}일 숨김 - 클릭하여 표시`}>{gap.count}</div>)}
                 </div>
                 <div style={{ height: 24, display: "flex", borderBottom: `2px solid ${t.border}`, position: "relative" }}>
-                  {dates.map((d, i) => { const hol = getHoliday(d); const isCustom = customHolidays.includes(fmt(d)); const isToday = fmt(d) === todayStr; const isSel = headerSelect && headerSelect.startIdx !== headerSelect.endIdx && i >= Math.min(headerSelect.startIdx, headerSelect.endIdx) && i <= Math.max(headerSelect.startIdx, headerSelect.endIdx); return <div key={i} title={hol || "클릭하여 휴무일 지정"} onClick={(e) => { e.stopPropagation(); setHeaderSelect(null); toggleCustomHoliday(d); }} style={{ width: CELL_W, textAlign: "center", fontSize: 11, lineHeight: "24px", color: isSel ? "#fff" : isToday ? "#fff" : hol ? t.holidayText : t.text, background: isSel ? t.accent + "88" : hol ? t.holidayBg : t.headerBg, borderRight: `1px solid ${t.border}`, fontWeight: isToday ? 800 : hol ? 700 : 600, cursor: KOREAN_HOLIDAYS[fmt(d)] ? "default" : "pointer", borderBottom: isCustom ? `2px solid ${t.accentAlt}` : "none", position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>{isToday ? <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 20, height: 20, borderRadius: "50%", background: "#a05560", color: "#fff", fontSize: 11, fontWeight: 800, lineHeight: 1 }}>{d.getDate()}</span> : d.getDate()}</div>; })}
+                  {dates.map((d, i) => { const hol = getHoliday(d); const isCustom = customHolidays.includes(fmt(d)); const isToday = fmt(d) === todayStr; const isSel = headerSelect && headerSelect.startIdx !== headerSelect.endIdx && i >= Math.min(headerSelect.startIdx, headerSelect.endIdx) && i <= Math.max(headerSelect.startIdx, headerSelect.endIdx); return <div key={i} title={hol || "클릭하여 휴무일 지정"} onClick={(e) => { e.stopPropagation(); setHeaderSelect(null); toggleCustomHoliday(d); }} style={{ width: CELL_W, textAlign: "center", fontSize: 11, lineHeight: "24px", color: isSel ? "#fff" : isToday ? "#fff" : hol ? t.holidayText : t.text, background: isSel ? t.accent + "88" : hol ? t.holidayBg : t.headerBg, borderRight: `1px solid ${t.border}`, fontWeight: isToday ? 800 : hol ? 700 : 600, cursor: KOREAN_HOLIDAYS[fmt(d)] ? "default" : "pointer", borderBottom: isCustom ? `2px solid ${t.accentAlt}` : "none", position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>{isToday ? <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 20, height: 20, borderRadius: "50%", background: t.accentAlt, color: "#fff", fontSize: 11, fontWeight: 800, lineHeight: 1 }}>{d.getDate()}</span> : d.getDate()}</div>; })}
                   {hiddenGaps.map((gap, gi) => <div key={`ng${gi}`} onClick={(e) => { e.stopPropagation(); unhideGap(gap.afterIdx); }} style={{ position: "absolute", left: gap.pos - 8, top: 2, width: 16, height: 20, background: t.accentAlt, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, color: "#fff", fontWeight: 700, cursor: "pointer", zIndex: 20, opacity: 0.7 }} title={`${gap.count}일 숨김 - 클릭하여 표시`}>{gap.count}</div>)}
                 </div>
                 <div onClick={(e) => { const ci = Math.floor((e.nativeEvent.offsetX != null ? e.nativeEvent.offsetX : (e.clientX - e.currentTarget.getBoundingClientRect().left)) / CELL_W); if (ci >= 0 && ci < dates.length) { const clickDate = fmt(dates[ci]); let mx = 0; milestones.forEach(m => { const mt = m.name.match(/^M(\d+)$/); if (mt) mx = Math.max(mx, +mt[1]); }); setEditingMilestone({ id: null, name: `M${mx + 1}`, startDate: clickDate, endDate: fmt(addDays(new Date(clickDate), 28)), status: "upcoming" }); setShowMilestoneModal(true); } }} style={{ height: 26, position: "relative", borderBottom: `1px solid ${t.border}`, width: dates.length * CELL_W, backgroundImage: `repeating-linear-gradient(to right, transparent, transparent ${CELL_W - 1}px, ${t.border}22 ${CELL_W - 1}px, ${t.border}22 ${CELL_W}px)`, cursor: "pointer" }}>
-                  {(() => { const ti = dateToCol(todayStr); return ti >= 0 ? <div style={{ position: "absolute", left: ti * CELL_W + Math.floor(CELL_W / 2) - 1, top: 0, width: 0, height: 26, borderLeft: "2px dashed #a05560", opacity: 0.45, pointerEvents: "none", zIndex: 2 }} /> : null; })()}
+                  {(() => { const ti = dateToCol(todayStr); return ti >= 0 ? <div style={{ position: "absolute", left: ti * CELL_W + Math.floor(CELL_W / 2) - 1, top: 0, width: 0, height: 26, borderLeft: `2px dashed ${t.accentAlt}`, opacity: 0.45, pointerEvents: "none", zIndex: 2 }} /> : null; })()}
                   {milestonePositions.map((ms) => {
                     const mst = MILESTONE_STATUS[ms.status] || MILESTONE_STATUS.upcoming;
-                    const msGrad = mode === "dark" ? mst.grad : mst.gradLight;
+                    const msBg = mode === "dark" ? mst.bg : mst.bgLight;
                     return (
                       <div key={ms.id} onClick={(e) => { e.stopPropagation(); setEditingMilestone(ms); setShowMilestoneModal(true); }}
-                        style={{ position: "absolute", top: 3, left: ms.sCol * CELL_W + 2, width: (ms.eCol - ms.sCol + 1) * CELL_W - 4, height: 20, background: msGrad, borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: mode === "dark" ? "#c0c4cc" : "#fff", cursor: "pointer", boxShadow: `0 2px 8px ${t.shadowColor}`, letterSpacing: 1 }}>{ms.name}</div>
+                        style={{ position: "absolute", top: 3, left: ms.sCol * CELL_W + 2, width: (ms.eCol - ms.sCol + 1) * CELL_W - 4, height: 20, background: msBg, borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: mode === "dark" ? "#c0c4cc" : "#fff", cursor: "pointer", boxShadow: `0 2px 8px ${t.shadowColor}`, letterSpacing: 1 }}>{ms.name}</div>
                     );
                   })}
                 </div>
@@ -1070,7 +1106,7 @@ export default function ArtSchedule() {
             <div style={{ flex: 1, overflow: "auto" }} ref={gridRef} onScroll={() => syncScroll("grid")}>
               <div style={{ width: dates.length * CELL_W, height: totalRows * CELL_H, position: "relative" }}>
                 {holidayIndices.map(i => <div key={"hc" + i} style={{ position: "absolute", left: i * CELL_W, top: 0, width: CELL_W, height: totalRows * CELL_H, background: t.holidayBg, pointerEvents: "none" }} />)}
-                {(() => { const ti = dateToCol(todayStr); return ti >= 0 ? <div style={{ position: "absolute", left: ti * CELL_W + Math.floor(CELL_W / 2) - 1, top: 0, width: 0, height: totalRows * CELL_H, borderLeft: "2px dashed #a05560", opacity: 0.45, pointerEvents: "none", zIndex: 4 }} /> : null; })()}
+                {(() => { const ti = dateToCol(todayStr); return ti >= 0 ? <div style={{ position: "absolute", left: ti * CELL_W + Math.floor(CELL_W / 2) - 1, top: 0, width: 0, height: totalRows * CELL_H, borderLeft: `2px dashed ${t.accentAlt}`, opacity: 0.45, pointerEvents: "none", zIndex: 4 }} /> : null; })()}
                 {hiddenGaps.map((gap, gi) => <div key={`gg${gi}`} style={{ position: "absolute", left: gap.pos - 1, top: 0, width: 2, height: totalRows * CELL_H, background: t.accentAlt, pointerEvents: "none", zIndex: 4, opacity: 0.4 }} />)}
                 {dates.map((d, i) => d.getDay() === 1 && i > 0 ? <div key={"wg"+i} style={{ position: "absolute", left: i * CELL_W - 1, top: 0, width: 2, height: totalRows * CELL_H, background: mode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.1)", pointerEvents: "none", zIndex: 3 }} /> : null)}
                 {flatRows.map((row, rIdx) => {
@@ -1160,8 +1196,8 @@ export default function ArtSchedule() {
         const ddayColorCell = (diff) => {
           if (diff === null || diff === undefined) return {};
           if (diff < 0) return { color: "#586070", textDecoration: "line-through" };
-          if (diff === 0) return { color: mode === "dark" ? "#e8d0d3" : "#fff", background: "#a05560", borderRadius: 4, padding: "1px 5px", fontWeight: 700 };
-          if (diff <= 6) return { color: "#a05560", fontWeight: 700 };
+          if (diff === 0) return { color: mode === "dark" ? "#e8d0d3" : "#fff", background: mode === "dark" ? "#a05560" : "#cf222e", borderRadius: 4, padding: "1px 5px", fontWeight: 700 };
+          if (diff <= 6) return { color: mode === "dark" ? "#a05560" : "#cf222e", fontWeight: 700 };
           if (diff <= 13) return { color: "#9e8548" };
           return { color: mode === "dark" ? "#b0b4be" : "#586070" };
         };
@@ -1309,7 +1345,7 @@ export default function ArtSchedule() {
                       onClick={() => openPopup(ds)}
                       style={{
                         background: rowBg,
-                        boxShadow: artUrgent ? "inset 3px 0 0 #a05560" : "none",
+                        boxShadow: artUrgent ? `inset 3px 0 0 ${mode === "dark" ? "#a05560" : "#cf222e"}` : "none",
                         cursor: "pointer", transition: "background 0.1s"
                       }}
                       title={isEmpty ? "항목 없음" : ""}
@@ -1483,7 +1519,7 @@ export default function ArtSchedule() {
 
       {/* ─── 컨텍스트 메뉴 ─── */}
       {contextMenu && (
-        <div style={{ position: "fixed", left: Math.min(contextMenu.x, window.innerWidth - 170), top: Math.min(contextMenu.y, window.innerHeight - 220), background: t.panelBg, border: `1px solid ${t.border}`, borderRadius: 8, boxShadow: `0 4px 20px ${t.shadowColor}`, zIndex: 2000, minWidth: 150, padding: 4 }}>
+        <div style={{ position: "fixed", left: Math.min(contextMenu.x, window.innerWidth - 170), top: Math.min(contextMenu.y, window.innerHeight - 220), background: t.panelBg, border: `1px solid ${t.border}`, borderRadius: RADIUS.md, boxShadow: `0 4px 20px ${t.shadowColor}`, zIndex: 2000, minWidth: 150, padding: 4 }}>
           {Object.entries(STATUS_COLORS).filter(([k]) => k !== "leave").map(([k, v]) => (
             <div key={k} onClick={() => { pushUndo("상태 변경"); setTasks((p) => p.map((x) => x.id === contextMenu.task.id ? { ...x, status: k } : x)); setContextMenu(null); }}
               style={{ padding: "7px 14px", cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", gap: 8, borderRadius: 5 }}
@@ -1499,7 +1535,7 @@ export default function ArtSchedule() {
 
       {/* ─── 툴팁 ─── */}
       {tooltip && (
-        <div style={{ position: "fixed", left: Math.min(tooltip.x, window.innerWidth - 180), top: Math.min(tooltip.y, window.innerHeight - 120), background: t.panelBg, border: `1px solid ${t.border}`, borderRadius: 10, padding: "10px 14px", boxShadow: `0 4px 20px ${t.shadowColor}`, zIndex: 2500, minWidth: 160, pointerEvents: "none" }}>
+        <div style={{ position: "fixed", left: Math.min(tooltip.x, window.innerWidth - 180), top: Math.min(tooltip.y, window.innerHeight - 120), background: t.panelBg, border: `1px solid ${t.border}`, borderRadius: RADIUS.lg, padding: "10px 14px", boxShadow: `0 4px 20px ${t.shadowColor}`, zIndex: 2500, minWidth: 160, pointerEvents: "none" }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 4 }}>{tooltip.name}{(() => { const rs = tooltip.roles || []; const display = rs.filter(r => r !== "사원"); return display.length > 0 ? <span style={{ fontSize: 10, color: t.accent, fontWeight: 400, marginLeft: 5 }}>{display.join("/")}</span> : ""; })()}</div>
           <div style={{ fontSize: 11, color: t.textDim, display: "flex", alignItems: "center", gap: 4, marginBottom: tooltip.email ? 3 : 0 }}>
             <span style={{ color: t.accent, fontSize: 10 }}>팀</span> {tooltip.team}
@@ -1582,13 +1618,24 @@ export default function ArtSchedule() {
           <ToEditForm t={t} row={editingTo} currentCount={toCurrentCount[editingTo.id] || 0} onSave={saveToRow} />
         </Modal>
       )}
+      {confirmDelete && (
+        <Modal t={t} onClose={() => setConfirmDelete(null)} title={confirmDelete.title}>
+          <p style={{ color: t.text, fontSize: 13, lineHeight: 1.8, margin: "0 0 20px", whiteSpace: "pre-line" }}>{confirmDelete.message}</p>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={confirmDelete.onConfirm}
+              style={{ flex: 1, padding: 12, background: t.deleteBg, border: "none", borderRadius: RADIUS.md, color: t.deleteFg, cursor: "pointer", fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><LuIcon name="trash2" size={15} />삭제</button>
+            <button onClick={() => setConfirmDelete(null)}
+              style={{ flex: 1, padding: 12, background: t.border, border: "none", borderRadius: RADIUS.md, color: t.text, cursor: "pointer", fontWeight: 700, fontSize: 14 }}>취소</button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
 
 /* ─── 유틸 컴포넌트 ─── */
 function Sep({ t }) { return <div style={{ width: 1, height: 20, background: t.border }} />; }
-function btn(bg, fg) { return { padding: "5px 12px", background: bg, border: "none", borderRadius: 6, color: fg || "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 5 }; }
+function btn(bg, fg) { return { padding: "5px 12px", background: bg, border: "none", borderRadius: RADIUS.sm, color: fg || "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 5 }; }
 function iconBtn(color) { return { background: "none", border: "none", color, cursor: "pointer", padding: "0 3px", display: "inline-flex", alignItems: "center" }; }
 function thS(t) { return { padding: "10px 8px", textAlign: "center", borderBottom: `2.5px solid ${t.border}`, borderRight: `1.5px solid ${t.border}`, color: t.text, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", position: "relative", userSelect: "none" }; }
 function tdS(t) { return { padding: "8px 8px", borderBottom: `1.5px solid ${t.border}`, borderRight: `1.5px solid ${t.border}`, fontSize: 12, textAlign: "center", verticalAlign: "middle", color: t.text }; }
@@ -1602,7 +1649,7 @@ function Modal({ children, onClose, title, t }) {
   }, [onClose]);
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", display: "flex", alignItems: mob ? "flex-end" : "center", justifyContent: "center", zIndex: 3000 }}>
-      <div style={{ background: t.panelBg, borderRadius: mob ? "14px 14px 0 0" : 14, padding: mob ? 16 : 28, width: mob ? "100%" : undefined, minWidth: mob ? 0 : 380, maxWidth: mob ? "100%" : 540, border: `1px solid ${t.border}`, boxShadow: `0 12px 40px ${t.shadowColor}`, maxHeight: mob ? "85vh" : "80vh", overflow: "auto", position: "relative" }}>
+      <div style={{ background: t.panelBg, borderRadius: mob ? `${RADIUS.lg}px ${RADIUS.lg}px 0 0` : RADIUS.lg, padding: mob ? 16 : 28, width: mob ? "100%" : undefined, minWidth: mob ? 0 : 380, maxWidth: mob ? "100%" : 540, border: `1px solid ${t.border}`, boxShadow: `0 12px 40px ${t.shadowColor}`, maxHeight: mob ? "85vh" : "80vh", overflow: "auto", position: "relative" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h3 style={{ margin: 0, color: t.accent, fontSize: 17, fontWeight: 700 }}>{title}</h3>
           <button onClick={onClose} style={{ background: "transparent", border: "none", color: t.textDim, cursor: "pointer", padding: "2px 6px", borderRadius: 6, lineHeight: 1, display: "flex" }} onMouseOver={(e) => e.currentTarget.style.color = t.text} onMouseOut={(e) => e.currentTarget.style.color = t.textDim}><LuIcon name="x" size={18} /></button>
@@ -1665,7 +1712,7 @@ function MilestoneForm({ t, mode, ms, onSave, onDelete }) {
         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
           {Object.entries(MILESTONE_STATUS).map(([k, v]) => (
             <button key={k} onClick={() => up("status", k)}
-              style={{ flex: 1, padding: "10px 0", background: f.status === k ? (mode === "dark" ? v.grad : v.gradLight) : t.inputBg, border: `2px solid ${f.status === k ? (mode === "dark" ? v.border : v.borderLight) : t.inputBorder}`, borderRadius: 7, color: f.status === k ? "#fff" : t.textDim, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>{v.label}</button>
+              style={{ flex: 1, padding: "10px 0", background: f.status === k ? (mode === "dark" ? v.bg : v.bgLight) : t.inputBg, border: `2px solid ${f.status === k ? (mode === "dark" ? v.border : v.borderLight) : t.inputBorder}`, borderRadius: 7, color: f.status === k ? "#fff" : t.textDim, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>{v.label}</button>
           ))}
         </div>
       </label>
@@ -1755,13 +1802,13 @@ function UpdateForm({ t, mode, dateStr, entry, monthLabel, onSave }) {
         <label style={{ ...lS, flex: 1 }}><span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><LuIcon name="gitMerge" size={16} /> 1차 통머지</span>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <input type="date" value={f.firstMerge} onChange={(e) => up("firstMerge", e.target.value)} style={{ ...iS, flex: 1 }} />
-            {f.firstMerge && (() => { const dd = calcDday(f.firstMerge); const ds = ddayColor(dd); return <span style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", ...ds }}>{fmtDday(dd)}</span>; })()}
+            {f.firstMerge && (() => { const dd = calcDday(f.firstMerge); const ds = ddayColor(dd, mode); return <span style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", ...ds }}>{fmtDday(dd)}</span>; })()}
           </div>
         </label>
         <label style={{ ...lS, flex: 1 }}><span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><LuIcon name="rocket" size={16} /> 마지막 통머지</span>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <input type="date" value={f.lastMerge} onChange={(e) => up("lastMerge", e.target.value)} style={{ ...iS, flex: 1 }} />
-            {f.lastMerge && (() => { const dd = calcDday(f.lastMerge); const ds = ddayColor(dd); return <span style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", ...ds }}>{fmtDday(dd)}</span>; })()}
+            {f.lastMerge && (() => { const dd = calcDday(f.lastMerge); const ds = ddayColor(dd, mode); return <span style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", ...ds }}>{fmtDday(dd)}</span>; })()}
           </div>
         </label>
       </div>
