@@ -337,10 +337,12 @@ export default function ArtSchedule() {
   const [memberDrag, setMemberDrag] = useState(null);
   const [memberDragOver, setMemberDragOver] = useState(null);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  const [appHeight, setAppHeight] = useState(() => window.innerHeight);
   useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 768);
+    const onResize = () => { setIsMobile(window.innerWidth < 768); setAppHeight(window.innerHeight); };
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    window.addEventListener("orientationchange", () => setTimeout(onResize, 100));
+    return () => { window.removeEventListener("resize", onResize); };
   }, []);
   const [zoomIdx, setZoomIdx] = useState(() => window.innerWidth < 768 ? 0 : 1);
   const zoom = ZOOM_LEVELS[zoomIdx];
@@ -890,7 +892,7 @@ export default function ArtSchedule() {
   );
 
   return (
-    <div style={{ fontFamily: "'Pretendard Variable','Noto Sans KR',-apple-system,sans-serif", height: "100vh", display: "flex", flexDirection: "column", background: t.bg, color: t.text, overflow: "hidden", transition: "background .25s,color .25s" }}>
+    <div style={{ fontFamily: "'Pretendard Variable','Noto Sans KR',-apple-system,sans-serif", height: isMobile ? appHeight : "100vh", display: "flex", flexDirection: "column", background: t.bg, color: t.text, overflow: "hidden", transition: "background .25s,color .25s" }}>
 
       {/* ─── 마감 카운트다운 ─── */}
       {milestones.length > 0 && (
@@ -972,8 +974,8 @@ export default function ArtSchedule() {
       </div>
 
       {/* ─── 메인 + 히스토리 래퍼 ─── */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative", minHeight: 0 }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minHeight: 0 }}>
 
       {/* ─── 아트 스케줄 탭 ─── */}
       {tab === "schedule" && (
@@ -1224,7 +1226,7 @@ export default function ArtSchedule() {
         const dlCnt = { art: [artFilled, artTotal], first: [firstFilled, firstTotal], last: [lastFilled, lastTotal] };
         const dlCntColor = (f, tt) => tt > 0 && f === tt ? "#4a7058" : t.textDim;
         return (
-        <div style={{ flex: 1, overflow: "auto", padding: isMobile ? 8 : 16 }}
+        <div style={{ flex: 1, overflow: "auto", padding: isMobile ? 8 : 16, minHeight: 0 }}
           onMouseUp={() => { updateDragRef.current = null; }}>
           {urgentAlerts.length > 0 && (
             <div style={{ marginBottom: 10, padding: "8px 14px", background: mode === "dark" ? "rgba(160,85,96,0.12)" : "rgba(244,67,54,.08)", border: "1.5px solid #f44336", borderRadius: 8, display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
@@ -1365,7 +1367,7 @@ export default function ArtSchedule() {
       {/* ─── 자리배치도 탭 ─── */}
       {/* ─── 기기/TO 현황 탭 ─── */}
       {tab === "overview" && (
-        <div style={{ flex: 1, overflow: "auto", padding: isMobile ? 12 : 20 }}>
+        <div style={{ flex: 1, overflow: "auto", padding: isMobile ? 12 : 20, minHeight: 0 }}>
           <div style={{ display: "flex", gap: isMobile ? 16 : 24, flexWrap: "wrap", alignItems: "flex-start" }}>
             {/* 기기 보유 현황 */}
             <div style={{ flex: 1, minWidth: isMobile ? 0 : 380, width: isMobile ? "100%" : undefined }}>
@@ -1374,9 +1376,10 @@ export default function ArtSchedule() {
                 <button onClick={() => setEditingDevice({ id: null, model: "", team: "", holder: "", returned: false, returnDate: "" })}
                   style={{ padding: "4px 12px", background: t.btnBg, border: "none", borderRadius: 5, color: t.btnFg, cursor: "pointer", fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4 }}><LuIcon name="plus" size={12} /> 추가</button>
               </div>
-              <table style={{ width: "100%", borderCollapse: "collapse", border: `1px solid ${t.border}`, fontSize: 12 }}>
+              <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+              <table style={{ width: "100%", minWidth: isMobile ? 340 : undefined, borderCollapse: "collapse", border: `1px solid ${t.border}`, fontSize: isMobile ? 11 : 12 }}>
                 <thead><tr style={{ background: t.headerBg }}>
-                  {["기종","팀","보유자","상태","반납일자"].map((h,i) => <th key={i} style={{ ...thS(t), fontSize: 11, padding: "7px 6px" }}>{h}</th>)}
+                  {["기종","팀","보유자","상태","반납일자"].map((h,i) => <th key={i} style={{ ...thS(t), fontSize: 11, padding: isMobile ? "5px 4px" : "7px 6px" }}>{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {devices.map((dev, i) => (
@@ -1397,14 +1400,16 @@ export default function ArtSchedule() {
                   ))}
                 </tbody>
               </table>
+              </div>{/* end device scroll wrapper */}
             </div>
 
             {/* TO 현황 */}
             <div style={{ flex: 1, minWidth: isMobile ? 0 : 340, width: isMobile ? "100%" : undefined }}>
               <h3 style={{ margin: "0 0 8px", color: t.text, fontSize: 13, fontWeight: 700 }}>TO 현황</h3>
-              <table style={{ width: "100%", borderCollapse: "collapse", border: `1px solid ${t.border}`, fontSize: 12 }}>
+              <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+              <table style={{ width: "100%", minWidth: isMobile ? 300 : undefined, borderCollapse: "collapse", border: `1px solid ${t.border}`, fontSize: isMobile ? 11 : 12 }}>
                 <thead><tr style={{ background: t.headerBg }}>
-                  {["팀","현재","입사예정","추가모집","비고"].map((h,i) => <th key={i} style={{ ...thS(t), fontSize: 11, padding: "7px 6px" }}>{h}</th>)}
+                  {["팀","현재","입사예정","추가모집","비고"].map((h,i) => <th key={i} style={{ ...thS(t), fontSize: 11, padding: isMobile ? "5px 4px" : "7px 6px" }}>{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {toData.map((row, i) => {
@@ -1429,14 +1434,15 @@ export default function ArtSchedule() {
                   </tr>
                 </tbody>
               </table>
+              </div>{/* end TO scroll wrapper */}
             </div>
           </div>
         </div>
       )}
 
       {tab === "seating" && (
-        <div style={{ flex: 1, overflow: "auto", padding: isMobile ? 10 : 20 }}>
-          <SeatingChart t={t} mode={mode} seatData={seatData} memberInfo={memberInfoMap} seatDragRef={seatDragRef}
+        <div style={{ flex: 1, overflow: "auto", padding: isMobile ? 10 : 20, minHeight: 0, WebkitOverflowScrolling: "touch" }}>
+          <SeatingChart t={t} mode={mode} seatData={seatData} memberInfo={memberInfoMap} seatDragRef={seatDragRef} isMobile={isMobile}
             onEdit={(secIdx, rowIdx, colIdx, seat) => setEditingSeat({ secIdx, rowIdx, colIdx, seat })}
             onDrop={(from, to, toCell) => {
               if (toCell && toCell.name) { setSeatSwapConfirm({ from, to }); }
@@ -1851,8 +1857,8 @@ function NameForm({ t, placeholder, onSubmit, label }) {
   );
 }
 
-function SeatingChart({ t, mode, seatData, onEdit, onDrop, memberInfo, seatDragRef }) {
-  const seatW = 82, seatH = 38, gap = 4, aisleW = 22;
+function SeatingChart({ t, mode, seatData, onEdit, onDrop, memberInfo, seatDragRef, isMobile }) {
+  const seatW = isMobile ? 62 : 82, seatH = isMobile ? 32 : 38, gap = isMobile ? 3 : 4, aisleW = isMobile ? 14 : 22;
   const [dragOver, setDragOver] = useState(null);
   const [tooltip, setTooltip] = useState(null);
   const tooltipTimer = useRef(null);
@@ -1907,10 +1913,10 @@ function SeatingChart({ t, mode, seatData, onEdit, onDrop, memberInfo, seatDragR
                       onMouseOver={(e) => { if (!isEmpty) { e.currentTarget.style.background = teamColor ? (dk ? (teamColor + "28") : (teamColor + "18")) : (dk ? "#2d3044" : "#eaeef2"); e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = `0 2px 6px ${dk ? "rgba(0,0,0,.35)" : "rgba(31,35,40,.08)"}`;} }}
                       onMouseOut={(e) => { e.currentTarget.style.background = bg; e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}>
                       {isEmpty ? (
-                        <div style={{ fontSize: 9, color: dk ? "#586070" : "#8c959f", textAlign: "center" }}>미지정</div>
+                        <div style={{ fontSize: isMobile ? 8 : 9, color: dk ? "#586070" : "#8c959f", textAlign: "center" }}>미지정</div>
                       ) : (<>
-                        <div style={{ fontSize: 8, color: teamColor || (dk ? "#586070" : "#8c959f"), fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.1, opacity: .85 }}>{cell.team || "미지정"}</div>
-                        <div style={{ fontSize: 11, color: t.text, fontWeight: cell.isLead ? 700 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 2, lineHeight: 1.2 }}>
+                        <div style={{ fontSize: isMobile ? 7 : 8, color: teamColor || (dk ? "#586070" : "#8c959f"), fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.1, opacity: .85 }}>{cell.team || "미지정"}</div>
+                        <div style={{ fontSize: isMobile ? 9 : 11, color: t.text, fontWeight: cell.isLead ? 700 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 2, lineHeight: 1.2 }}>
                           {cell.isLead && <LuIcon name="star" size={9} sw={2} color="#9e8548" fill="#9e8548" style={{ flexShrink: 0 }} />}
                           {cell.name || <span style={{ color: dk ? "#586070" : "#8c959f", fontWeight: 400, fontSize: 9 }}>미지정</span>}
                         </div>
