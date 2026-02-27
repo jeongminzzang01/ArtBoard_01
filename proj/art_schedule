@@ -312,7 +312,7 @@ export default function ArtSchedule() {
   const [updateTeamFilter, setUpdateTeamFilter] = useState("전체");
   const [dragItem, setDragItem] = useState(null);
   const [dragOverDate, setDragOverDate] = useState(null);
-  const [updateColWidths, setUpdateColWidths] = useState([55, 85, 0, 130, 115, 115, 125]);
+  const [updateColWidths, setUpdateColWidths] = useState(() => window.innerWidth < 768 ? [40, 60, 0, 100] : [55, 85, 0, 130, 115, 115, 125]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const searchRef = useRef(null);
@@ -977,7 +977,7 @@ export default function ArtSchedule() {
 
       {/* ─── 아트 스케줄 탭 ─── */}
       {tab === "schedule" && (
-        <div style={{ flex: 1, display: "flex", overflow: "hidden" }} onMouseUp={handleCellMouseUp}>
+        <div style={{ flex: 1, display: "flex", overflow: "hidden" }} onMouseUp={(e) => { if (e.button === 0) handleCellMouseUp(); }} onAuxClick={(e) => { if (e.button === 1) e.preventDefault(); }}>
           {/* 좌측 패널 */}
           <div style={{ width: leftW, flexShrink: 0, borderRight: `2px solid ${t.border}`, display: "flex", flexDirection: "column", background: t.panelBg, position: "relative" }}>
             <div style={{ height: 70, borderBottom: `2px solid ${t.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: t.accent, background: t.headerBg }}>팀 / 담당자</div>
@@ -1078,7 +1078,7 @@ export default function ArtSchedule() {
                   const de = dragSel ? Math.max(dragState.startIdx, dragState.endIdx) : 0;
                   return (
                     <div key={row.memberId + rIdx} onDragOver={(e) => handleRowDragOver(e, row.memberId)} onDragLeave={() => { if (dragOverMemberId === row.memberId) setDragOverMemberId(null); }} onDrop={(e) => handleRowDrop(e, row.memberId)}
-                      onMouseDown={(e) => { const ci = Math.floor((e.nativeEvent.offsetX || (e.clientX - e.currentTarget.getBoundingClientRect().left)) / CELL_W); if (e.target === e.currentTarget && ci >= 0 && ci < dates.length) handleCellMouseDown(row.memberId, ci); }}
+                      onMouseDown={(e) => { if (e.button !== 0) return; const ci = Math.floor((e.nativeEvent.offsetX || (e.clientX - e.currentTarget.getBoundingClientRect().left)) / CELL_W); if (e.target === e.currentTarget && ci >= 0 && ci < dates.length) handleCellMouseDown(row.memberId, ci); }}
                       onMouseMove={(e) => { if (dragState && dragState.memberId === row.memberId) { const ci = Math.floor((e.clientX - e.currentTarget.getBoundingClientRect().left) / CELL_W); if (ci >= 0 && ci < dates.length) handleCellMouseEnter(row.memberId, ci); } }}
                       style={{ position: "absolute", left: 0, top: rIdx * CELL_H, width: dates.length * CELL_W, height: CELL_H, borderBottom: `1px solid ${t.border}44`, borderTop: isTeamFirst ? `1.5px solid ${t.border}` : "none", background: dragOverMemberId === row.memberId && !row.isEmpty ? t.dragBg : "transparent", cursor: row.isEmpty ? "default" : "crosshair", backgroundImage: `repeating-linear-gradient(to right, transparent, transparent ${CELL_W - 1}px, ${t.border}18 ${CELL_W - 1}px, ${t.border}18 ${CELL_W}px)` }}>
                       {dragSel ? <div style={{ position: "absolute", left: ds * CELL_W, top: 0, width: (de - ds + 1) * CELL_W, height: CELL_H, background: t.dragBg, pointerEvents: "none" }} /> : null}
@@ -1149,9 +1149,9 @@ export default function ArtSchedule() {
           return new Set(flat.slice(Math.min(si, ei), Math.max(si, ei) + 1));
         })();
         const openPopup = (ds) => { if (selSet.size === 0 && !dragItem) setEditingUpdate(ds); };
-        const cellPad = updateWide ? "12px 10px" : "8px 8px";
-        const cellPadEmpty = updateWide ? "4px 10px" : "3px 8px";
-        const rowFs = updateWide ? 13 : 12;
+        const cellPad = isMobile ? "6px 4px" : updateWide ? "12px 10px" : "8px 8px";
+        const cellPadEmpty = isMobile ? "2px 4px" : updateWide ? "4px 10px" : "3px 8px";
+        const rowFs = isMobile ? 11 : updateWide ? 13 : 12;
         // D-day 셀 렌더러 — colType: "art"|"first"|"last", hasItems: 행에 항목 있는지
         const deadlineLeftColor = { art: "#4a7058", first: "#7889a8", last: "#7e6e98" };
         const deadlineBgColor = { art: mode === "dark" ? "rgba(74,112,88,0.08)" : "rgba(74,112,88,0.05)", first: mode === "dark" ? "rgba(120,137,168,0.06)" : "rgba(120,137,168,0.04)", last: mode === "dark" ? "rgba(126,110,152,0.06)" : "rgba(126,110,152,0.04)" };
@@ -1249,16 +1249,16 @@ export default function ArtSchedule() {
             <button onClick={() => setUpdateWide(p => !p)} style={{ padding: "4px 12px", background: updateWide ? t.btnBg : "transparent", border: `1px solid ${updateWide ? t.btnBg : t.border}`, borderRadius: 6, color: updateWide ? t.btnFg : t.text, cursor: "pointer", fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 5 }}><LuIcon name="maximize2" size={14} /> WIDE</button>
           </div>
           <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-          <table style={{ width: "100%", minWidth: isMobile ? 700 : undefined, borderCollapse: "collapse", fontSize: rowFs, tableLayout: "fixed", userSelect: "none", border: `1.5px solid ${t.border}` }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: rowFs, tableLayout: "fixed", userSelect: "none", border: `1.5px solid ${t.border}` }}>
             <colgroup>
               {updateColWidths.map((w, i) => <col key={i} style={w > 0 ? { width: w } : {}} />)}
             </colgroup>
             <thead>
               <tr style={{ background: t.headerBg, position: "sticky", top: 0, zIndex: 10 }}>
-                {[{t:"월"},{t:"업데이트"},{t:"항목"},{t:"미정"},{t:"아트 마감",ic:"palette",cnt:"art"},{t:"1차 통머지",ic:"gitMerge",cnt:"first"},{t:"마지막 통머지",ic:"rocket",cnt:"last"}].map((col, ci) => (
-                  <th key={ci} style={{ ...thS(t), borderRight: ci === 6 ? "none" : `1.5px solid ${t.border}` }}>
+                {(isMobile ? [{t:"월"},{t:"업데이트"},{t:"항목"},{t:"미정"}] : [{t:"월"},{t:"업데이트"},{t:"항목"},{t:"미정"},{t:"아트 마감",ic:"palette",cnt:"art"},{t:"1차 통머지",ic:"gitMerge",cnt:"first"},{t:"마지막 통머지",ic:"rocket",cnt:"last"}]).map((col, ci, arr) => (
+                  <th key={ci} style={{ ...thS(t), borderRight: ci === arr.length - 1 ? "none" : `1.5px solid ${t.border}` }}>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>{col.ic && <LuIcon name={col.ic} size={13} />}{col.t}{col.cnt && dlCnt[col.cnt][1] > 0 && <span style={{ fontSize: 10, fontWeight: 600, marginLeft: 2, color: dlCntColor(dlCnt[col.cnt][0], dlCnt[col.cnt][1]) }}>({dlCnt[col.cnt][0]}/{dlCnt[col.cnt][1]})</span>}</span>
-                    {ci < 6 && <div onMouseDown={(e) => startColResize(e, ci)} style={{ position: "absolute", right: -3, top: 0, bottom: 0, width: 6, cursor: "col-resize", zIndex: 2 }} onMouseOver={(e) => e.currentTarget.style.background = t.accent + "44"} onMouseOut={(e) => e.currentTarget.style.background = "transparent"} />}
+                    {ci < arr.length - 1 && <div onMouseDown={(e) => startColResize(e, ci)} style={{ position: "absolute", right: -3, top: 0, bottom: 0, width: 6, cursor: "col-resize", zIndex: 2 }} onMouseOver={(e) => e.currentTarget.style.background = t.accent + "44"} onMouseOut={(e) => e.currentTarget.style.background = "transparent"} />}
                   </th>
                 ))}
               </tr>
@@ -1280,7 +1280,7 @@ export default function ArtSchedule() {
                   const isDragOver = dragOverDate === ds;
                   const isEmpty = items.length === 0 || (items.length === 1 && items[0] === "-");
                   const emptyBg = mode === "dark" ? "#1e2029" : "#f6f8fa";
-                  const chipS = (isDrag) => ({ display: "flex", alignItems: "center", gap: 8, padding: "3px 8px", margin: "2px 0", background: isDrag ? (mode === "dark" ? "#323544" : "#d0d7de") : (mode === "dark" ? "#222430" : "#f0f3f6"), border: `1px solid ${t.border}`, borderRadius: 4, cursor: "grab", fontSize: 11, overflow: "hidden", opacity: isDrag ? 0.5 : 1 });
+                  const chipS = (isDrag) => ({ display: "flex", alignItems: "center", gap: isMobile ? 4 : 8, padding: isMobile ? "2px 5px" : "3px 8px", margin: "2px 0", background: isDrag ? (mode === "dark" ? "#323544" : "#d0d7de") : (mode === "dark" ? "#222430" : "#f0f3f6"), border: `1px solid ${t.border}`, borderRadius: 4, cursor: "grab", fontSize: isMobile ? 10 : 11, overflow: "hidden", opacity: isDrag ? 0.5 : 1 });
                   const hasTeamMatch = (teamArr) => updateTeamFilter === "전체" || (teamArr && teamArr.some(tn => tn === updateTeamFilter || (updateTeamFilter === "배경_제작" && tn.startsWith("배경_제작"))));
                   const filteredIdxs = items.map((_, i) => i).filter(i => {
                     if (items[i] === "-") return updateTeamFilter === "전체";
@@ -1331,7 +1331,7 @@ export default function ArtSchedule() {
                             onMouseDown={(e) => e.stopPropagation()}
                             onClick={(e) => { e.stopPropagation(); setEditingUpdate(ds); }}
                             style={chipS(dragItem && dragItem.fromDate === ds && dragItem.field === "items" && dragItem.index === i)}
-                          ><span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it}</span>{teams.map(tn => { const tc = TEAM_TAG_COLORS[tn] || TEAM_TAG_COLORS[(Object.keys(TEAM_TAG_COLORS).find(k => tn.startsWith(k)))] || TEAM_TAG_COLORS["공통"]; const c = tc[mode] || tc.dark; return <span key={tn} style={{ padding: "2px 8px", fontSize: 10, borderRadius: 10, border: `1px solid ${c.border}`, background: c.bg, color: c.color, whiteSpace: "nowrap", flexShrink: 0 }}>{tn}</span>; })}</span>
+                          ><span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: isMobile ? "normal" : "nowrap", wordBreak: isMobile ? "break-all" : undefined }}>{it}</span>{!isMobile && teams.map(tn => { const tc = TEAM_TAG_COLORS[tn] || TEAM_TAG_COLORS[(Object.keys(TEAM_TAG_COLORS).find(k => tn.startsWith(k)))] || TEAM_TAG_COLORS["공통"]; const c = tc[mode] || tc.dark; return <span key={tn} style={{ padding: "2px 8px", fontSize: 10, borderRadius: 10, border: `1px solid ${c.border}`, background: c.bg, color: c.color, whiteSpace: "nowrap", flexShrink: 0 }}>{tn}</span>; })}</span>
                           );
                         })}
                       </td>
@@ -1348,9 +1348,9 @@ export default function ArtSchedule() {
                           >{it}</span>
                         )) : <span style={{ color: t.textDim }}>-</span>}
                       </td>}
-                      {renderDdayCell(artDl, { colType: "art", hasItems: !isEmpty })}
-                      {renderDdayCell(entry.firstMerge, { colType: "first" })}
-                      {renderDdayCell(entry.lastMerge, { colType: "last", noBorderRight: true })}
+                      {!isMobile && renderDdayCell(artDl, { colType: "art", hasItems: !isEmpty })}
+                      {!isMobile && renderDdayCell(entry.firstMerge, { colType: "first" })}
+                      {!isMobile && renderDdayCell(entry.lastMerge, { colType: "last", noBorderRight: true })}
                     </tr>
                   );
                 });
