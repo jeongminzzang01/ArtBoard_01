@@ -98,7 +98,7 @@ const fmtDday = (diff) => {
 const ddayColor = (diff, mode = "dark") => {
   if (diff === null || diff === undefined) return {};
   const dk = mode === "dark";
-  if (diff < 0) return { color: dk ? "#586070" : "#8c959f", textDecoration: "line-through" };
+  if (diff < 0) return { color: dk ? "#7a8494" : "#8c959f", textDecoration: "line-through" };
   if (diff === 0) return { color: dk ? "#e8d0d3" : "#fff", background: dk ? "#a05560" : "#cf222e", borderRadius: 4, padding: "1px 5px", fontWeight: 700 };
   if (diff <= 6) return { color: dk ? "#a05560" : "#cf222e", fontWeight: 700 };
   if (diff <= 13) return { color: dk ? "#9e8548" : "#9a6700" };
@@ -400,6 +400,9 @@ export default function ArtSchedule() {
   const [toData, setToData] = useState(_stored?.toData || INIT_TO_DATA);
   const [editingTo, setEditingTo] = useState(null);
   const [deadlineMsId, setDeadlineMsId] = useState(_stored?.deadlineMsId || null);
+  const [expandedMsId, setExpandedMsId] = useState(null);
+  const [completedItems, setCompletedItems] = useState(_stored?.completedItems || {});
+  const m37MigratedRef = useRef(false);
   const undoStack = useRef([]);
   const [changeLog, setChangeLog] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -937,9 +940,9 @@ export default function ArtSchedule() {
   useEffect(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      saveStorage({ teams, tasks, milestones, customHolidays, updateData, pendingByMonth, seatData, hiddenDates, hiddenUpdateDates, showPastUpdates, devices, toData, mode, collapsedTeams, deadlineMsId, displayMonths });
+      saveStorage({ teams, tasks, milestones, customHolidays, updateData, pendingByMonth, seatData, hiddenDates, hiddenUpdateDates, showPastUpdates, devices, toData, mode, collapsedTeams, deadlineMsId, displayMonths, completedItems });
     }, 500);
-  }, [teams, tasks, milestones, customHolidays, updateData, pendingByMonth, seatData, hiddenDates, hiddenUpdateDates, showPastUpdates, devices, toData, mode, collapsedTeams, deadlineMsId, displayMonths]);
+  }, [teams, tasks, milestones, customHolidays, updateData, pendingByMonth, seatData, hiddenDates, hiddenUpdateDates, showPastUpdates, devices, toData, mode, collapsedTeams, deadlineMsId, displayMonths, completedItems]);
 
   useEffect(() => {
     const id = "artboard-scrollbar-style";
@@ -1089,6 +1092,33 @@ export default function ArtSchedule() {
     }).filter(Boolean);
   }, [milestones, dates]);
 
+  const milestoneUpdatesMap = useMemo(() => {
+    const map = {};
+    Object.entries(updateData).forEach(([dateStr, entry]) => {
+      const mn = entry.milestone;
+      if (!mn) return;
+      if (!map[mn]) map[mn] = [];
+      map[mn].push([dateStr, entry]);
+    });
+    Object.keys(map).forEach(k => map[k].sort(([a], [b]) => a.localeCompare(b)));
+    return map;
+  }, [updateData]);
+
+  // 마일스톤별 항목 키 맵 (진행률 계산용)
+  const msItemKeysMap = useMemo(() => {
+    const m = {};
+    Object.entries(milestoneUpdatesMap).forEach(([msName, updates]) => {
+      const keys = [];
+      updates.forEach(([dateStr, entry]) => {
+        (entry.items || []).forEach((item, idx) => {
+          if (item && item !== "-") keys.push(`${msName}:${dateStr}:${idx}`);
+        });
+      });
+      m[msName] = keys;
+    });
+    return m;
+  }, [milestoneUpdatesMap]);
+
   // 마일스톤 자동 라이브 전환: 오늘이 endDate를 지나면 자동으로 live
   useEffect(() => {
     const today = todayStr;
@@ -1099,6 +1129,23 @@ export default function ArtSchedule() {
     });
     if (changed) setMilestones(updated);
   }, [todayStr]);
+
+  // M37 이하 마일스톤 항목 일괄 완료 마이그레이션 (1회)
+  useEffect(() => {
+    if (m37MigratedRef.current || completedItems._m37_migrated) return;
+    m37MigratedRef.current = true;
+    const patch = { _m37_migrated: true };
+    Object.entries(milestoneUpdatesMap).forEach(([msName, updates]) => {
+      const num = parseInt((msName.match(/^M(\d+)$/) || [])[1]);
+      if (!num || num > 37) return;
+      updates.forEach(([dateStr, entry]) => {
+        (entry.items || []).forEach((item, idx) => {
+          if (item && item !== "-") patch[`${msName}:${dateStr}:${idx}`] = true;
+        });
+      });
+    });
+    setCompletedItems(prev => ({ ...prev, ...patch }));
+  }, [milestoneUpdatesMap, completedItems]);
 
   const teamSections = useMemo(() => {
     let off = 0;
@@ -1182,7 +1229,7 @@ export default function ArtSchedule() {
         </>}
         <div style={{ flex: 1 }} />
         {tab === "schedule" && !isMobile && (
-          <div style={{ display: "flex", gap: 10, fontSize: 10, marginRight: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 10, fontSize: 11, marginRight: 6, flexWrap: "wrap", alignItems: "center" }}>
             {Object.entries(STATUS_COLORS).filter(([k]) => k !== "leave").map(([k, v]) => (
               <span key={k} style={{ display: "flex", alignItems: "center", gap: 3 }}>
                 <LuIcon name={STATUS_ICON_MAP[k]} size={12} color={mode === "dark" ? v.bg : (v.borderLight || v.border)} />{v.label}
@@ -1327,7 +1374,7 @@ export default function ArtSchedule() {
                     })();
                     return (
                       <div key={ms.id} onClick={(e) => { e.stopPropagation(); setEditingMilestone(ms); setShowMilestoneModal(true); }}
-                        style={{ position: "absolute", top: 3, left: ms.sCol * CELL_W + 2, width: (ms.eCol - ms.sCol + 1) * CELL_W - 4, height: 20, background: msBg, borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: mode === "dark" ? "#c0c4cc" : "#fff", cursor: "pointer", boxShadow: `0 2px 8px ${t.shadowColor}`, letterSpacing: 1, overflow: "hidden" }}>
+                        style={{ position: "absolute", top: 3, left: ms.sCol * CELL_W + 2, width: (ms.eCol - ms.sCol + 1) * CELL_W - 4, height: 20, background: msBg, borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: mode === "dark" ? "#e0e4ea" : "#fff", cursor: "pointer", boxShadow: `0 2px 8px ${t.shadowColor}`, letterSpacing: 1, overflow: "hidden" }}>
                         {progress > 0 && progress < 100 && <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${progress}%`, background: "rgba(255,255,255,0.15)", borderRadius: "5px 0 0 5px" }} />}
                         <span style={{ position: "relative", zIndex: 1 }}>{ms.name}{ms.status !== "live" && progress > 0 && progress < 100 ? ` ${progress}%` : ""}</span>
                       </div>
@@ -1408,7 +1455,7 @@ export default function ArtSchedule() {
                       style={{ position: "absolute", left: aS * CELL_W + 1, top: leaveTop, width: barW, height: leaveH,
                         background: `repeating-linear-gradient(45deg, ${hatchBase}, ${hatchBase} 3px, ${hatchStripe} 3px, ${hatchStripe} 5px)`,
                         border: `1.5px dashed ${mode === "dark" ? "#6a9ab0" : "#0969da"}`, borderRadius: 3, display: "flex", alignItems: "center", justifyContent: "center", gap: 2,
-                        fontSize: isFull ? 10 : 9, fontWeight: 700, color: mode === "dark" ? "#a0d4e8" : "#0969da",
+                        fontSize: isFull ? 11 : 10, fontWeight: 700, color: mode === "dark" ? "#a0d4e8" : "#0969da",
                         cursor: "grab", overflow: "hidden", whiteSpace: "nowrap", padding: "0 3px",
                         zIndex: 20,
                         opacity: draggingTaskId === task.id ? 0.5 : searchMatch && !searchMatch.taskIds.has(task.id) ? 0.15 : 1, transition: "opacity .15s" }}
@@ -1452,10 +1499,10 @@ export default function ArtSchedule() {
               {dateStr ? (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
                   <span>{fmtDateKR(dateStr)}</span>
-                  <span style={{ fontSize: 9, lineHeight: 1, ...ddStyle, ...(isDday ? { animation: "ddayPulse 1.5s ease-in-out infinite", display: "inline-block" } : {}) }}>{fmtDday(dd)}</span>
+                  <span style={{ fontSize: 10, lineHeight: 1, ...ddStyle, ...(isDday ? { animation: "ddayPulse 1.5s ease-in-out infinite", display: "inline-block" } : {}) }}>{fmtDday(dd)}</span>
                 </div>
               ) : (colType === "art" && hasItems) ? (
-                <span style={{ color: mode === "dark" ? "#3c3f4e" : "#8c959f", fontSize: 10, fontStyle: "italic" }}>미정</span>
+                <span style={{ color: mode === "dark" ? "#6a7888" : "#8c959f", fontSize: 10, fontStyle: "italic" }}>미정</span>
               ) : null}
             </td>
           );
@@ -1534,7 +1581,7 @@ export default function ArtSchedule() {
               <tr style={{ background: t.headerBg, position: "sticky", top: 0, zIndex: 10 }}>
                 {(isMobile ? UPDATE_COLS_MOBILE : UPDATE_COLS_DESKTOP).map((col, ci, arr) => (
                   <th key={ci} style={{ ...thS(t), borderRight: ci === arr.length - 1 ? "none" : `1.5px solid ${t.border}` }}>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>{col.ic && <LuIcon name={col.ic} size={13} />}{col.t}{col.cnt && dlCnt[col.cnt][1] > 0 && <span style={{ fontSize: 10, fontWeight: 600, marginLeft: 2, color: dlCntColor(dlCnt[col.cnt][0], dlCnt[col.cnt][1]) }}>({dlCnt[col.cnt][0]}/{dlCnt[col.cnt][1]})</span>}</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>{col.ic && <LuIcon name={col.ic} size={13} />}{col.t}{col.cnt && dlCnt[col.cnt][1] > 0 && <span style={{ fontSize: 11, fontWeight: 600, marginLeft: 2, color: dlCntColor(dlCnt[col.cnt][0], dlCnt[col.cnt][1]) }}>({dlCnt[col.cnt][0]}/{dlCnt[col.cnt][1]})</span>}</span>
                     {ci < arr.length - 1 && <div onMouseDown={(e) => startColResize(e, ci)} style={{ position: "absolute", right: -3, top: 0, bottom: 0, width: 6, cursor: "col-resize", zIndex: 2 }} onMouseOver={(e) => e.currentTarget.style.background = t.accent + "44"} onMouseOut={(e) => e.currentTarget.style.background = "transparent"} />}
                   </th>
                 ))}
@@ -1645,6 +1692,144 @@ export default function ArtSchedule() {
       {/* ─── 기기/TO 현황 탭 ─── */}
       {tab === "overview" && (
         <div style={{ flex: 1, overflow: "auto", padding: isMobile ? 12 : 20, minHeight: 0 }}>
+          {/* ─── 마일스톤 현황 ─── */}
+          {milestones.length > 0 && (() => {
+            const dk = mode === "dark";
+            const sorted = [...milestones].sort((a, b) => {
+              const aLive = a.status === "live" ? 1 : 0, bLive = b.status === "live" ? 1 : 0;
+              if (aLive !== bLive) return aLive - bLive;
+              if (aLive) return b.endDate.localeCompare(a.endDate);
+              return a.endDate.localeCompare(b.endDate);
+            });
+            return (
+              <div style={{ marginBottom: isMobile ? 16 : 20 }}>
+                <h3 style={{ margin: "0 0 10px", color: t.text, fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+                  <LuIcon name="flag" size={14} /> 마일스톤 현황
+                </h3>
+                <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fill, minmax(${isMobile ? 150 : 200}px, 1fr))`, gap: 12 }}>
+                  {sorted.map(ms => {
+                    const dd = calcDday(ms.endDate);
+                    const isLive = ms.status === "live";
+                    const isUrgent = !isLive && dd !== null && dd <= 7 && dd >= 0;
+                    const msUpdates = milestoneUpdatesMap[ms.name] || [];
+                    const allItemKeys = msItemKeysMap[ms.name] || [];
+                    const totalItems = allItemKeys.length;
+                    const doneCount = allItemKeys.filter(key => completedItems[key]).length;
+                    const pct = totalItems > 0 ? Math.round((doneCount / totalItems) * 100) : (isLive ? 100 : 0);
+                    const allDone = totalItems > 0 && doneCount === totalItems;
+                    const badgeBg = isLive ? (dk ? "#2d6b4f" : "rgba(26,127,55,.12)")
+                      : isUrgent ? (dk ? "#6e3a42" : "rgba(207,34,46,.12)")
+                      : (dk ? "#3b4d80" : "rgba(52,81,178,.12)");
+                    const badgeColor = isLive ? (dk ? "#6fda8e" : "#1a7f37")
+                      : isUrgent ? (dk ? "#e8a0aa" : "#cf222e")
+                      : (dk ? "#8eaaed" : "#3451b2");
+                    const barBg = dk ? t.border : "#e1e4e8";
+                    const barFill = allDone ? (dk ? "#3a8a5e" : "#2da44e")
+                      : isUrgent ? (dk ? "#a05560" : "#cf222e")
+                      : (dk ? "#5068a8" : "#3451b2");
+                    const isExpanded = expandedMsId === ms.id;
+                    return (
+                      <div key={ms.id} onClick={() => setExpandedMsId(prev => prev === ms.id ? null : ms.id)}
+                        style={{ background: dk ? t.panelBg : "#f6f8fa",
+                          border: `1px solid ${isExpanded ? (dk ? t.accent : "#0969da") : (dk ? t.border : "#d0d7de")}`,
+                          borderRadius: 8, padding: isMobile ? "10px 12px" : "12px 16px", cursor: "pointer",
+                          transition: "border-color .15s" }}
+                        onMouseOver={e => { if (!isExpanded) e.currentTarget.style.borderColor = dk ? "#4a5568" : "#8c959f"; }}
+                        onMouseOut={e => { if (!isExpanded) e.currentTarget.style.borderColor = dk ? t.border : "#d0d7de"; }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{ms.name}</span>
+                          <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 4,
+                            background: badgeBg, color: badgeColor }}>{isLive ? "라이브" : isUrgent ? "마감임박" : "라이브 예정"}</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: t.textDim, marginBottom: 4 }}>
+                          {fmtDateKR(ms.startDate)} ~ {fmtDateKR(ms.endDate)}
+                        </div>
+                        {dd !== null && (
+                          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8,
+                            color: allDone ? (dk ? "#6fda8e" : "#1a7f37") : isUrgent ? (dk ? "#e8a0aa" : "#cf222e") : (dk ? "#8eaaed" : "#3451b2") }}>
+                            {allDone ? "아트실 작업 모두 완료" : dd === 0 ? "D-Day" : dd > 0 ? `D-${dd}` : `D+${Math.abs(dd)}`}
+                          </div>
+                        )}
+                        <div style={{ height: 6, borderRadius: 3, background: barBg, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${Math.min(100, pct)}%`, borderRadius: 3,
+                            background: barFill, transition: "width .3s" }} />
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
+                          <span style={{ fontSize: 10, color: t.textDim }}>{totalItems > 0 ? `${doneCount}/${totalItems}` : ""} {pct}%</span>
+                          <LuIcon name={isExpanded ? "chevronUp" : "chevronDown"} size={12} style={{ color: t.textDim }} />
+                        </div>
+                        {msUpdates.length > 0 && !isExpanded && (
+                          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
+                            {msUpdates.map(([dateStr]) => {
+                              const udd = calcDday(dateStr);
+                              const isPast = udd !== null && udd < 0;
+                              const dp = new Date(dateStr + "T00:00:00");
+                              return (
+                                <span key={dateStr} style={{ fontSize: 10, padding: "1px 6px", borderRadius: 3,
+                                  background: isPast ? (dk ? "#282b38" : "#f0f3f6") : (dk ? "rgba(120,137,168,0.12)" : "rgba(9,105,218,.08)"),
+                                  color: isPast ? t.textDim : (dk ? "#8eaaed" : "#3451b2"),
+                                  textDecoration: isPast ? "line-through" : "none" }}>
+                                  {dp.getMonth() + 1}/{dp.getDate()}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {isExpanded && (
+                          <div style={{ borderTop: `1px solid ${t.border}`, marginTop: 8, paddingTop: 8 }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: t.textDim, marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                              <LuIcon name="calendar" size={11} /> 업데이트 일정
+                            </div>
+                            {msUpdates.length === 0 ? (
+                              <div style={{ fontSize: 11, color: t.textDim, fontStyle: "italic" }}>(업데이트 없음)</div>
+                            ) : msUpdates.map(([dateStr, entry]) => {
+                              const dp = new Date(dateStr + "T00:00:00");
+                              const udd = calcDday(dateStr);
+                              const isPast = udd !== null && udd < 0;
+                              return (
+                                <div key={dateStr} style={{ marginBottom: 8 }}>
+                                  <div style={{ fontSize: 11, fontWeight: 600, color: isPast ? t.textDim : t.text, marginBottom: 3, display: "flex", alignItems: "center", gap: 4,
+                                    textDecoration: isPast ? "line-through" : "none" }}>
+                                    <span>{dp.getMonth() + 1}/{dp.getDate()}</span>
+                                    {udd !== null && !isPast && <span style={{ fontSize: 10, fontWeight: 500, color: udd <= 7 ? (dk ? "#e8a0aa" : "#cf222e") : (dk ? "#8eaaed" : "#3451b2") }}>{udd === 0 ? "D-Day" : `D-${udd}`}</span>}
+                                  </div>
+                                  {(() => {
+                                    const validItems = (entry.items || []).map((x, idx) => ({ item: x, idx })).filter(({ item: x }) => x && x !== "-");
+                                    return validItems.length > 0 ? validItems.map(({ item, idx: origIdx }) => {
+                                    const itemKey = `${ms.name}:${dateStr}:${origIdx}`;
+                                    const isDone = !!completedItems[itemKey];
+                                    return (
+                                      <div key={origIdx} onClick={e => e.stopPropagation()}
+                                        style={{ fontSize: 11, paddingLeft: 4, lineHeight: 1.5, display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                                        <span onClick={() => setCompletedItems(prev => { const n = { ...prev }; if (n[itemKey]) delete n[itemKey]; else n[itemKey] = true; return n; })}
+                                          style={{ width: 16, height: 16, borderRadius: 3, flexShrink: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                                            border: `1.5px solid ${isDone ? (dk ? "#3a8a5e" : "#2da44e") : (dk ? "#4a5568" : "#d0d7de")}`,
+                                            background: isDone ? (dk ? "#2d6b4f" : "rgba(26,127,55,.12)") : "transparent",
+                                            transition: "all .15s" }}>
+                                          {isDone && <LuIcon name="check" size={10} style={{ color: dk ? "#6fda8e" : "#1a7f37" }} />}
+                                        </span>
+                                        <span style={{ color: isDone ? t.textDim : t.text, textDecoration: isDone ? "line-through" : "none" }}>{item}</span>
+                                        <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, marginLeft: "auto", flexShrink: 0,
+                                          background: isDone ? (dk ? "#2d6b4f" : "rgba(26,127,55,.1)") : (dk ? "rgba(120,137,168,0.10)" : "rgba(9,105,218,.06)"),
+                                          color: isDone ? (dk ? "#6fda8e" : "#1a7f37") : (dk ? "#7889a8" : "#57606a") }}>
+                                          {isDone ? "완료" : "진행중"}
+                                        </span>
+                                      </div>
+                                    );
+                                  }) : <div style={{ fontSize: 11, color: t.textDim, paddingLeft: 10, fontStyle: "italic" }}>(항목 없음)</div>;
+                                  })()}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
           <div style={{ display: "flex", gap: isMobile ? 16 : 24, flexWrap: "wrap", alignItems: "flex-start" }}>
             {/* 기기 보유 현황 */}
             <div style={{ flex: 1, minWidth: isMobile ? 0 : 380, width: isMobile ? "100%" : undefined }}>
@@ -1748,7 +1933,7 @@ export default function ArtSchedule() {
             {changeLog.length === 0 ? <div style={{ color: t.textDim, padding: 12, textAlign: "center" }}>변경 기록이 없습니다</div> :
               <div style={{ display: "flex", flexDirection: "column-reverse", gap: 2 }}>
                 {changeLog.map((log, i) => <div key={i} style={{ padding: "4px 0", borderBottom: `1px solid ${t.border}22` }}>
-                  <div style={{ fontSize: 9, color: t.textDim }}>{log.time}</div>
+                  <div style={{ fontSize: 10, color: t.textDim }}>{log.time}</div>
                   <div style={{ color: log.desc.startsWith("↩") ? t.accentAlt : t.text, fontSize: 11 }}>{log.desc}</div>
                 </div>)}
               </div>
@@ -2210,8 +2395,8 @@ function SeatingChart({ t, mode, seatData, onEdit, onDrop, memberInfo, seatDragR
                   const bg = isEmpty ? (dk ? "#1e2029" : "#f6f8fa")
                     : teamColor ? (dk ? (teamColor + "18") : (teamColor + "0c"))
                     : (dk ? "#222430" : "#f0f3f6");
-                  const borderLeft = (!isEmpty && teamColor) ? `3px solid ${teamColor}${cell.isLead ? "cc" : "88"}` : (isEmpty ? `3px solid ${dk ? "#282b38" : "#d0d7de"}` : `3px solid ${dk ? "#586070" : "#8c959f"}`);
-                  const borderRest = isEmpty ? `1px ${dk ? "dashed" : "solid"} ${dk ? "#282b38" : "#d0d7de"}`
+                  const borderLeft = (!isEmpty && teamColor) ? `3px solid ${teamColor}${cell.isLead ? "cc" : "88"}` : (isEmpty ? `3px solid ${dk ? "#363a48" : "#d0d7de"}` : `3px solid ${dk ? "#586070" : "#8c959f"}`);
+                  const borderRest = isEmpty ? `1px ${dk ? "dashed" : "solid"} ${dk ? "#363a48" : "#d0d7de"}`
                     : teamColor ? `1px solid ${dk ? (teamColor + "44") : (teamColor + "28")}`
                     : `1px solid ${dk ? "#282b38" : "#d0d7de"}`;
                   return (
