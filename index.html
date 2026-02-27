@@ -353,7 +353,6 @@ function ArtSchedule() {
   const [updateSelect, setUpdateSelect] = useState(null);
   const updateDragRef = useRef(null);
   const [pendingByMonth, setPendingByMonth] = useState(_stored?.pendingByMonth || INIT_UPDATE.pending);
-  const [updateWide, setUpdateWide] = useState(false);
   const [updateTeamFilter, setUpdateTeamFilter] = useState("전체");
   const [dragItem, setDragItem] = useState(null);
   const [dragOverDate, setDragOverDate] = useState(null);
@@ -382,7 +381,7 @@ function ArtSchedule() {
   const [collapsedTeams, setCollapsedTeams] = useState(_stored?.collapsedTeams || []);
   const [memberDrag, setMemberDrag] = useState(null);
   const [memberDragOver, setMemberDragOver] = useState(null);
-  const [viewMode, setViewMode] = useState("full");
+  const [viewMode, setViewMode] = useState(() => window.innerWidth < 768 ? "week" : "full");
   const [weekOffset, setWeekOffset] = useState(0);
   const [taskDrag, setTaskDrag] = useState(null);
   const taskDragRef = useRef(null);
@@ -1510,9 +1509,9 @@ function ArtSchedule() {
           return new Set(flat.slice(Math.min(si, ei), Math.max(si, ei) + 1));
         })();
         const openPopup = (ds) => { if (selSet.size === 0 && !dragItem) setEditingUpdate(ds); };
-        const cellPad = isMobile ? "6px 4px" : updateWide ? "12px 10px" : "8px 8px";
-        const cellPadEmpty = isMobile ? "2px 4px" : updateWide ? "4px 10px" : "3px 8px";
-        const rowFs = isMobile ? 11 : updateWide ? 13 : 12;
+        const cellPad = isMobile ? "6px 4px" : "8px 8px";
+        const cellPadEmpty = isMobile ? "2px 4px" : "3px 8px";
+        const rowFs = isMobile ? 11 : 12;
         // D-day 셀 렌더러 — colType: "art"|"first"|"last", hasItems: 행에 항목 있는지
         const deadlineLeftColor = { art: "#4a7058", first: "#7889a8", last: "#7e6e98" };
         const deadlineBgColor = { art: mode === "dark" ? "rgba(74,112,88,0.08)" : "rgba(74,112,88,0.05)", first: mode === "dark" ? "rgba(120,137,168,0.06)" : "rgba(120,137,168,0.04)", last: mode === "dark" ? "rgba(126,110,152,0.06)" : "rgba(126,110,152,0.04)" };
@@ -1600,7 +1599,6 @@ function ArtSchedule() {
               {TEAM_TAG_NAMES.map(tn => <option key={tn} value={tn}>{tn}</option>)}
             </select>
             <div style={{ flex: 1 }} />
-            <button onClick={() => setUpdateWide(p => !p)} style={{ padding: "4px 12px", background: updateWide ? t.btnBg : "transparent", border: `1px solid ${updateWide ? t.btnBg : t.border}`, borderRadius: 6, color: updateWide ? t.btnFg : t.text, cursor: "pointer", fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 5 }}><LuIcon name="maximize2" size={14} /> WIDE</button>
           </div>
           <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: rowFs, tableLayout: "fixed", userSelect: "none", border: `1.5px solid ${t.border}` }}>
