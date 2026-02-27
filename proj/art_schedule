@@ -1,0 +1,2031 @@
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+
+// ─── 한국 공휴일 (2025~2027) ───
+const KOREAN_HOLIDAYS = {
+  "2025-01-01": "신정", "2025-01-28": "설날 연휴", "2025-01-29": "설날", "2025-01-30": "설날 연휴",
+  "2025-03-01": "삼일절", "2025-05-05": "어린이날", "2025-05-06": "대체공휴일(부처님오신날)",
+  "2025-05-15": "부처님오신날", "2025-06-06": "현충일", "2025-08-15": "광복절",
+  "2025-10-03": "개천절", "2025-10-05": "추석 연휴", "2025-10-06": "추석", "2025-10-07": "추석 연휴",
+  "2025-10-08": "대체공휴일(추석)", "2025-10-09": "한글날", "2025-12-25": "크리스마스",
+  "2026-01-01": "신정", "2026-02-16": "설날 연휴", "2026-02-17": "설날", "2026-02-18": "설날 연휴",
+  "2026-03-01": "삼일절", "2026-03-02": "대체공휴일(삼일절)", "2026-05-05": "어린이날",
+  "2026-05-24": "부처님오신날", "2026-06-06": "현충일", "2026-08-15": "광복절",
+  "2026-08-17": "대체공휴일(광복절)", "2026-09-24": "추석 연휴", "2026-09-25": "추석",
+  "2026-09-26": "추석 연휴", "2026-10-03": "개천절", "2026-10-05": "대체공휴일(개천절)",
+  "2026-10-09": "한글날", "2026-12-25": "크리스마스",
+};
+
+const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+const DAY_NAMES_KR = ["일","월","화","수","목","금","토"];
+const fmtDateKR = (ds) => { if (!ds) return ""; const d = new Date(ds+"T00:00:00"); return `${d.getMonth()+1}/${d.getDate()}(${DAY_NAMES_KR[d.getDay()]})`; };
+const dayNames = ["일", "월", "화", "수", "목", "금", "토"];
+const addDays = (d, n) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
+const isHoliday = (d) => KOREAN_HOLIDAYS[fmt(d)] || null;
+const isWeekend = (d) => d.getDay() === 0 || d.getDay() === 6;
+
+// ─── Lucide 인라인 아이콘 ───
+const ICON_DATA = {
+  search: [["circle",{cx:11,cy:11,r:8}],["path",{d:"m21 21-4.3-4.3"}]],
+  x: [["path",{d:"M18 6 6 18"}],["path",{d:"m6 6 12 12"}]],
+  plus: [["path",{d:"M5 12h14"}],["path",{d:"M12 5v14"}]],
+  minus: [["path",{d:"M5 12h14"}]],
+  sun: [["circle",{cx:12,cy:12,r:4}],["path",{d:"M12 2v2"}],["path",{d:"M12 20v2"}],["path",{d:"m4.93 4.93 1.41 1.41"}],["path",{d:"m17.66 17.66 1.41 1.41"}],["path",{d:"M2 12h2"}],["path",{d:"M20 12h2"}],["path",{d:"m6.34 17.66-1.41 1.41"}],["path",{d:"m19.07 4.93-1.41 1.41"}]],
+  moon: [["path",{d:"M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"}]],
+  users: [["path",{d:"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"}],["circle",{cx:9,cy:7,r:4}],["path",{d:"M22 21v-2a4 4 0 0 0-3-3.87"}],["path",{d:"M16 3.13a4 4 0 0 1 0 7.75"}]],
+  userPlus: [["path",{d:"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"}],["circle",{cx:9,cy:7,r:4}],["line",{x1:19,x2:19,y1:8,y2:14}],["line",{x1:22,x2:16,y1:11,y2:11}]],
+  flag: [["path",{d:"M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"}],["line",{x1:4,x2:4,y1:22,y2:15}]],
+  calendarPlus: [["path",{d:"M8 2v4"}],["path",{d:"M16 2v4"}],["rect",{x:3,y:4,width:18,height:18,rx:2}],["path",{d:"M3 10h18"}],["path",{d:"M12 14v4"}],["path",{d:"M10 16h4"}]],
+  calendarCheck: [["path",{d:"M8 2v4"}],["path",{d:"M16 2v4"}],["rect",{x:3,y:4,width:18,height:18,rx:2}],["path",{d:"M3 10h18"}],["path",{d:"m9 16 2 2 4-4"}]],
+  calendar: [["path",{d:"M8 2v4"}],["path",{d:"M16 2v4"}],["rect",{x:3,y:4,width:18,height:18,rx:2}],["path",{d:"M3 10h18"}]],
+  gripVertical: [["circle",{cx:9,cy:12,r:1}],["circle",{cx:9,cy:5,r:1}],["circle",{cx:9,cy:19,r:1}],["circle",{cx:15,cy:12,r:1}],["circle",{cx:15,cy:5,r:1}],["circle",{cx:15,cy:19,r:1}]],
+  settings: [["path",{d:"M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"}],["circle",{cx:12,cy:12,r:3}]],
+  chevronDown: [["path",{d:"m6 9 6 6 6-6"}]],
+  chevronRight: [["path",{d:"m9 18 6-6-6-6"}]],
+  circleCheck: [["circle",{cx:12,cy:12,r:10}],["path",{d:"m9 12 2 2 4-4"}]],
+  clock: [["circle",{cx:12,cy:12,r:10}],["polyline",{points:"12 6 12 12 16 14"}]],
+  circle: [["circle",{cx:12,cy:12,r:10}]],
+  alertCircle: [["circle",{cx:12,cy:12,r:10}],["line",{x1:12,x2:12,y1:8,y2:12}],["line",{x1:12,x2:12.01,y1:16,y2:16}]],
+  palmtree: [["path",{d:"M13 8c0-2.76-2.46-5-5.5-5-1.64 0-3.1.72-4.08 1.85M13 8c0-2.76 2.46-5 5.5-5 1.64 0 3.1.72 4.08 1.85M13 8v8"}],["path",{d:"M13 16H7a4 4 0 0 1-.2-8c.67-.2 1.37-.2 2.2-.2"}],["path",{d:"M13 16h6a4 4 0 0 0 .2-8c-.67-.2-1.37-.2-2.2-.2"}],["path",{d:"M13 16v5"}]],
+  sunrise: [["path",{d:"M12 2v8"}],["path",{d:"m4.93 10.93 1.41 1.41"}],["path",{d:"M2 18h2"}],["path",{d:"M20 18h2"}],["path",{d:"m19.07 10.93-1.41 1.41"}],["path",{d:"M22 22H2"}],["path",{d:"M16 18a4 4 0 0 0-8 0"}]],
+  sunset: [["path",{d:"M12 10V2"}],["path",{d:"m4.93 10.93 1.41 1.41"}],["path",{d:"M2 18h2"}],["path",{d:"M20 18h2"}],["path",{d:"m19.07 10.93-1.41 1.41"}],["path",{d:"M22 22H2"}],["path",{d:"M16 18a4 4 0 0 0-8 0"}]],
+  plane: [["path",{d:"M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"}]],
+  palette: [["circle",{cx:13.5,cy:6.5,r:.5,fill:"currentColor"}],["circle",{cx:17.5,cy:10.5,r:.5,fill:"currentColor"}],["circle",{cx:8.5,cy:7.5,r:.5,fill:"currentColor"}],["circle",{cx:6.5,cy:12.5,r:.5,fill:"currentColor"}],["path",{d:"M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.04-.23-.29-.38-.63-.38-1.04 0-.82.73-1.43 1.54-1.43H16c3.31 0 6-2.69 6-6 0-5.5-4.5-9.95-10-9.95z"}]],
+  gitMerge: [["circle",{cx:18,cy:18,r:3}],["circle",{cx:6,cy:6,r:3}],["path",{d:"M6 21V9a9 9 0 0 0 9 9"}]],
+  rocket: [["path",{d:"M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"}],["path",{d:"m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"}],["path",{d:"M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"}],["path",{d:"M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"}]],
+  alertTriangle: [["path",{d:"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"}],["path",{d:"M12 9v4"}],["path",{d:"M12 17h.01"}]],
+  save: [["path",{d:"M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"}],["path",{d:"M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"}],["path",{d:"M7 3v4a1 1 0 0 0 1 1h7"}]],
+  trash2: [["path",{d:"M3 6h18"}],["path",{d:"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"}],["path",{d:"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"}],["line",{x1:10,x2:10,y1:11,y2:17}],["line",{x1:14,x2:14,y1:11,y2:17}]],
+  pencil: [["path",{d:"M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"}],["path",{d:"m15 5 4 4"}]],
+  listChecks: [["path",{d:"m3 17 2 2 4-4"}],["path",{d:"m3 7 2 2 4-4"}],["path",{d:"M13 6h8"}],["path",{d:"M13 12h8"}],["path",{d:"M13 18h8"}]],
+  layoutGrid: [["rect",{x:3,y:3,width:7,height:7,rx:1}],["rect",{x:14,y:3,width:7,height:7,rx:1}],["rect",{x:3,y:14,width:7,height:7,rx:1}],["rect",{x:14,y:14,width:7,height:7,rx:1}]],
+  monitor: [["rect",{x:2,y:3,width:20,height:14,rx:2}],["line",{x1:8,x2:16,y1:21,y2:21}],["line",{x1:12,x2:12,y1:17,y2:21}]],
+  timer: [["line",{x1:10,x2:14,y1:2,y2:2}],["line",{x1:12,x2:15,y1:14,y2:11}],["circle",{cx:12,cy:14,r:8}]],
+  history: [["path",{d:"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"}],["path",{d:"M3 3v5h5"}],["path",{d:"M12 7v5l4 2"}]],
+  undo2: [["path",{d:"M9 14 4 9l5-5"}],["path",{d:"M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"}]],
+  maximize2: [["polyline",{points:"15 3 21 3 21 9"}],["polyline",{points:"9 21 3 21 3 15"}],["line",{x1:21,x2:14,y1:3,y2:10}],["line",{x1:3,x2:10,y1:21,y2:14}]],
+  eyeOff: [["path",{d:"M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"}],["path",{d:"M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"}],["line",{x1:2,x2:22,y1:2,y2:22}]],
+  star: [["polygon",{points:"12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"}]],
+  shield: [["path",{d:"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"}]],
+};
+const LuIcon = ({ name, size = 16, sw = 1.5, color = "currentColor", fill, style, ...props }) => {
+  const d = ICON_DATA[name];
+  if (!d) return null;
+  return React.createElement("svg", {
+    width: size, height: size, viewBox: "0 0 24 24", fill: fill || "none",
+    stroke: color, strokeWidth: sw, strokeLinecap: "round", strokeLinejoin: "round",
+    style: { flexShrink: 0, display: "inline-block", verticalAlign: "middle", ...style }, ...props
+  }, ...d.map(([tag, attrs], i) => React.createElement(tag, { key: i, ...attrs })));
+};
+const STATUS_ICON_MAP = { done: "circleCheck", progress: "clock", planned: "circle", leave: "palmtree" };
+
+// D-day 계산 헬퍼
+const calcDday = (dateStr) => {
+  if (!dateStr) return null;
+  const target = new Date(dateStr + "T00:00:00");
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const diff = Math.round((target - today) / 86400000);
+  return diff;
+};
+const fmtDday = (diff) => {
+  if (diff === null || diff === undefined) return "";
+  if (diff === 0) return "D-Day";
+  if (diff > 0) return `D-${diff}`;
+  return `D+${Math.abs(diff)}`;
+};
+const ddayColor = (diff) => {
+  if (diff === null || diff === undefined) return {};
+  if (diff < 0) return { color: "#586070", textDecoration: "line-through" };
+  if (diff === 0) return { color: "#e8d0d3", background: "#a05560", borderRadius: 4, padding: "1px 5px", fontWeight: 700 };
+  if (diff <= 6) return { color: "#a05560", fontWeight: 700 };
+  if (diff <= 13) return { color: "#9e8548" };
+  return { color: "#586070" };
+};
+
+// pulse 애니메이션 주입
+if (typeof document !== "undefined" && !document.getElementById("dday-pulse-style")) {
+  const st = document.createElement("style");
+  st.id = "dday-pulse-style";
+  st.textContent = `@keyframes ddayPulse { 0%,100%{opacity:1} 50%{opacity:.6} }`;
+  document.head.appendChild(st);
+}
+
+function genMonthDates(months) {
+  const dates = [];
+  months.forEach(({ year, month }) => {
+    const dim = new Date(year, month + 1, 0).getDate();
+    for (let d = 1; d <= dim; d++) { const dt = new Date(year, month, d); if (!isWeekend(dt)) dates.push(dt); }
+  });
+  return dates;
+}
+function genThursdays(months) {
+  const res = [];
+  months.forEach(({ year, month }) => {
+    const dim = new Date(year, month + 1, 0).getDate();
+    for (let d = 1; d <= dim; d++) { const dt = new Date(year, month, d); if (dt.getDay() === 4) res.push(dt); }
+  });
+  return res;
+}
+
+const DEFAULT_CELL_W = 32, DEFAULT_CELL_H = 34, DEFAULT_LEFT_W = 190, TEAM_W_RATIO = 0.37;
+const EMAIL_DOMAIN = "@madngine.com";
+const ZOOM_LEVELS = [
+  { cellW: 24, cellH: 26, font: 9, nameFont: 10, teamFont: 9, label: "S" },
+  { cellW: 32, cellH: 34, font: 10, nameFont: 12, teamFont: 11, label: "M" },
+  { cellW: 40, cellH: 42, font: 12, nameFont: 14, teamFont: 13, label: "L" },
+  { cellW: 50, cellH: 50, font: 14, nameFont: 16, teamFont: 15, label: "XL" },
+];
+
+const STATUS_COLORS = {
+  done: { bg: "#4a7058", bgLight: "#dafbe1", border: "#3e5f4a", borderLight: "#1a7f37", label: "완료", text: "#e2f2e6" },
+  progress: { bg: "#9e8548", bgLight: "#fff8c5", border: "#887240", borderLight: "#9a6700", label: "진행중", text: "#f8f0e0" },
+  planned: { bg: "#3c3f4e", bgLight: "#f6f8fa", border: "#333644", borderLight: "#8c959f", label: "예정", text: "#ccd0da" },
+  leave: { bg: "#3a5868", bgLight: "#ddf4ff", border: "#6a9ab0", borderLight: "#0969da", label: "연차", text: "#d4eef8" },
+};
+const LEAVE_TYPES = ["연차", "오전반차", "오후반차", "오전반반차", "오후반반차", "신혼여행", "휴가", "군소집"];
+
+const LEAVE_TYPE_INFO = {
+  "연차": { icon: "palmtree", type: "full", label: "연차" },
+  "오전반차": { icon: "sunrise", type: "am", label: "오전반차" },
+  "오후반차": { icon: "sunset", type: "pm", label: "오후반차" },
+  "오전반반차": { icon: "sunrise", type: "am", label: "오전반반차" },
+  "오후반반차": { icon: "sunset", type: "pm", label: "오후반반차" },
+  "신혼여행": { icon: "plane", type: "full", label: "신혼여행" },
+  "휴가": { icon: "palmtree", type: "full", label: "휴가" },
+  "군소집": { icon: "shield", type: "full", label: "군소집" },
+};
+const getLeaveInfo = (title) => {
+  if (LEAVE_TYPE_INFO[title]) return LEAVE_TYPE_INFO[title];
+  if (title.includes("오전반반차")) return LEAVE_TYPE_INFO["오전반반차"];
+  if (title.includes("오후반반차")) return LEAVE_TYPE_INFO["오후반반차"];
+  if (title.includes("오전반차")) return LEAVE_TYPE_INFO["오전반차"];
+  if (title.includes("오후반차")) return LEAVE_TYPE_INFO["오후반차"];
+  if (title.includes("연차")) return LEAVE_TYPE_INFO["연차"];
+  if (title.includes("신혼여행")) return LEAVE_TYPE_INFO["신혼여행"];
+  if (title.includes("휴가")) return LEAVE_TYPE_INFO["휴가"];
+  if (title.includes("군소집")) return LEAVE_TYPE_INFO["군소집"];
+  return LEAVE_TYPE_INFO["연차"];
+};
+
+const TEAM_TAG_COLORS = {
+  "캐릭터": { dark: { bg: "rgba(74,112,88,0.25)", color: "#88b898", border: "rgba(74,112,88,0.4)" }, light: { bg: "rgba(74,112,88,0.12)", color: "#2a6038", border: "rgba(74,112,88,0.3)" } },
+  "애니메이션": { dark: { bg: "rgba(158,133,72,0.25)", color: "#c8b878", border: "rgba(158,133,72,0.4)" }, light: { bg: "rgba(158,133,72,0.12)", color: "#6a5820", border: "rgba(158,133,72,0.3)" } },
+  "이펙트": { dark: { bg: "rgba(126,110,152,0.25)", color: "#a898c0", border: "rgba(126,110,152,0.4)" }, light: { bg: "rgba(126,110,152,0.12)", color: "#5a4878", border: "rgba(126,110,152,0.3)" } },
+  "배경_컨셉": { dark: { bg: "rgba(106,125,154,0.25)", color: "#90a8c0", border: "rgba(106,125,154,0.4)" }, light: { bg: "rgba(106,125,154,0.12)", color: "#3a5068", border: "rgba(106,125,154,0.3)" } },
+  "배경_제작": { dark: { bg: "rgba(120,137,168,0.25)", color: "#98b0c8", border: "rgba(120,137,168,0.4)" }, light: { bg: "rgba(120,137,168,0.12)", color: "#3a5878", border: "rgba(120,137,168,0.3)" } },
+  "공통": { dark: { bg: "rgba(88,96,112,0.25)", color: "#8890a0", border: "rgba(88,96,112,0.4)" }, light: { bg: "rgba(88,96,112,0.12)", color: "#3a4050", border: "rgba(88,96,112,0.3)" } },
+};
+const TEAM_TAG_NAMES = Object.keys(TEAM_TAG_COLORS);
+
+const MILESTONE_STATUS = {
+  live: { grad: "linear-gradient(135deg, #4a5a75, #6e6088)", gradLight: "linear-gradient(135deg, #2a6e50, #1a607a)", label: "라이브" },
+  upcoming: { grad: "linear-gradient(135deg, #404860, #5a5070)", gradLight: "linear-gradient(135deg, #2a5080, #4a3e80)", label: "라이브 예정" },
+};
+
+const themes = {
+  dark: {
+    bg: "#191b22", panelBg: "#1e2029", headerBg: "#222430", accent: "#7889a8",
+    accentAlt: "#a05560", text: "#c4c8d0", textDim: "#6a7888", border: "#282b38",
+    holidayBg: "rgba(160,85,96,0.06)", holidayText: "#a05560",
+    inputBg: "#1e2029", inputBorder: "#323544", hoverBg: "#2d3044",
+    milestoneGrad: "linear-gradient(135deg, #4a5a75, #6e6088)",
+    shadowColor: "rgba(0,0,0,0.35)", dragBg: "rgba(120,137,168,0.10)",
+    teamDragBg: "rgba(120,137,168,0.06)", teamDragBorder: "#566680",
+    tableBg: "#191b22", tableAlt: "#222430", tableHover: "#2d3044",
+    btnBg: "#566680", btnFg: "#d0d4dc", deleteBg: "#8f5560", deleteFg: "#e8d0d3",
+  },
+  light: {
+    bg: "#ffffff", panelBg: "#f6f8fa", headerBg: "#f0f3f6", accent: "#0969da",
+    accentAlt: "#cf222e", text: "#1f2328", textDim: "#656d76", border: "#d0d7de",
+    holidayBg: "rgba(207,34,46,0.05)", holidayText: "#cf222e",
+    inputBg: "#ffffff", inputBorder: "#d0d7de", hoverBg: "#eaeef2",
+    milestoneGrad: "linear-gradient(135deg, #2a6e50, #1a607a)",
+    shadowColor: "rgba(31,35,40,0.08)", dragBg: "rgba(9,105,218,0.1)",
+    teamDragBg: "rgba(9,105,218,0.06)", teamDragBorder: "#0969da",
+    tableBg: "#ffffff", tableAlt: "#f6f8fa", tableHover: "#eaeef2",
+    btnBg: "#0969da", btnFg: "#fff", deleteBg: "#cf222e", deleteFg: "#fff",
+  },
+};
+
+// INIT_TEAMS, INIT_TASKS, INIT_MS: loaded from init_data.js
+
+const SEAT_TEAM_COLORS = {
+  "캐릭터팀": "#e91e63", "애니메이션팀": "#9c27b0", "이펙트팀": "#ff9800",
+  "배경컨셉팀": "#4caf50", "배경제작1팀": "#2196f3", "배경제작2팀": "#00bcd4",
+  "TA팀": "#00897b",
+};
+const mk = (no, team, name = "", isLead = false) => ({ no, team, name, isLead });
+const INITIAL_SEAT_DATA = [
+  { rows: [
+    [mk(62,"배경제작2팀","이현아"), null, mk(67,"배경제작2팀","신지선",true), false, null, mk(76,"캐릭터팀","최세연",true), null, mk(81,"배경제작1팀","김예솔",true), null, mk(86,"배경컨셉팀","주태식",true), false, false],
+    [mk(63,"배경제작2팀","조승연"), null, mk(68,"배경제작2팀","조미혜"), mk(72,"TA팀","백승아"), null, mk(77,"캐릭터팀","김연지"), null, mk(82,"배경제작1팀","유원국"), null, mk(87,"배경컨셉팀","김은지"), mk(91,""), false],
+    [mk(64,""), null, mk(69,"배경제작2팀","강동훈"), mk(73,"TA팀","문종서",true), null, mk(78,"캐릭터팀","장하림"), null, mk(83,"배경제작1팀","이경민"), null, mk(88,""), mk(92,""), false],
+    [mk(65,""), null, mk(70,"배경제작2팀","김나영"), mk(74,"TA팀","여운태"), null, mk(79,"캐릭터팀","한상은"), null, mk(84,"배경제작1팀","민다혜"), null, mk(89,"배경제작1팀","정성욱"), mk(93,""), false],
+    [mk(66,""), null, mk(71,""), mk(75,""), null, mk(80,""), null, mk(85,"배경제작1팀","윤희삼"), null, mk(90,""), mk(94,""), false],
+    [],
+    [false, null, false, mk(164,"캐릭터팀","김다미"), null, mk(169,"캐릭터팀","방지윤"), null, mk(175,"애니메이션팀","이차연"), null, mk(181,"애니메이션팀","박민우"), false, false],
+    [false, null, false, mk(165,"캐릭터팀","안익찬"), null, mk(170,"캐릭터팀","이창재"), null, mk(176,"애니메이션팀","서주완"), null, mk(182,"애니메이션팀","박지혁",true), false, mk(187,"")],
+    [false, null, false, mk(166,"캐릭터팀","김유철"), null, mk(171,"캐릭터팀","이영휴"), null, mk(177,"애니메이션팀","정윤교"), null, mk(183,"애니메이션팀","김재영"), false, mk(188,"")],
+    [false, null, false, mk(167,"캐릭터팀","김현우"), null, mk(172,"캐릭터팀","권수아"), null, mk(178,"이펙트팀","전찬영"), null, mk(184,"애니메이션팀","김민정",true), false, mk(189,"")],
+    [false, null, false, mk(168,"캐릭터팀","소지현"), null, mk(173,"캐릭터팀","이루리"), null, mk(179,"이펙트팀","진유경"), null, mk(185,"이펙트팀","김부영"), false, mk(190,"","빌드PC")],
+    [false, null, false, false, null, mk(174,"캐릭터팀","최원석",true), null, mk(180,"이펙트팀","박정환",true), null, mk(186,"이펙트팀","이정아"), false, false],
+  ]}
+];
+
+// ─── 기기 보유 현황 초기 데이터 ───
+const INIT_DEVICES = [
+  { id: "dev1", model: "아이패드5", team: "이펙트", holder: "박정환", returned: false, returnDate: "" },
+  { id: "dev2", model: "아이폰14 (프로비저널)", team: "개발지원팀", holder: "김승주", returned: false, returnDate: "" },
+  { id: "dev3", model: "갤럭시_S22_울트라", team: "개발지원팀", holder: "김승주", returned: false, returnDate: "" },
+  { id: "dev4", model: "갤럭시_S21", team: "", holder: "", returned: true, returnDate: "2025-06-24" },
+  { id: "dev5", model: "갤럭시_S22_플러스", team: "", holder: "", returned: true, returnDate: "2025-06-24" },
+  { id: "dev6", model: "갤럭시_S20", team: "", holder: "", returned: true, returnDate: "2025-06-24" },
+  { id: "dev7", model: "아이폰14_프로맥스", team: "", holder: "", returned: true, returnDate: "2025-06-24" },
+];
+// ─── TO 현황 초기 데이터 ───
+const INIT_TO_DATA = [
+  { id: "to1", label: "배경컨셉", teamNames: ["배경_컨셉"], incoming: 0, recruiting: 1, note: "" },
+  { id: "to2", label: "캐릭터", teamNames: ["캐릭터"], incoming: 0, recruiting: 2, note: "" },
+  { id: "to3", label: "배경 제작", teamNames: ["배경_제작1팀", "배경_제작2팀"], incoming: 0, recruiting: 1, note: "" },
+  { id: "to4", label: "애니메이션", teamNames: ["애니메이션"], incoming: 0, recruiting: 0, note: "" },
+  { id: "to5", label: "이펙트", teamNames: ["이펙트"], incoming: 0, recruiting: 0, note: "" },
+  { id: "to6", label: "EX", teamNames: [], incoming: 0, recruiting: 0, note: "" },
+  { id: "to7", label: "TA", teamNames: ["TA팀"], incoming: 0, recruiting: 0, note: "" },
+];
+
+// ─── UPDATE_SCHEDULE → updateData 변환 ───
+const INIT_UPDATE = (() => {
+  if (typeof UPDATE_SCHEDULE === "undefined") return { data: {}, pending: {} };
+  const data = {};
+  const pending = {};
+  const addPending = (mk, item) => { if (!pending[mk]) pending[mk] = []; pending[mk].push(item); };
+  UPDATE_SCHEDULE.forEach(entry => {
+    if (entry.date === "보류") {
+      addPending("보류", entry.item);
+      return;
+    }
+    const d = entry.date;
+    if (!data[d]) data[d] = { items: [], itemTeams: [], milestone: "", firstMerge: "", lastMerge: "" };
+    data[d].items.push(entry.item);
+    data[d].itemTeams.push(entry.teams || []);
+    if (entry.milestone && !data[d].milestone) data[d].milestone = entry.milestone;
+    if (entry.remark) {
+      const year = parseInt(d.split("-")[0]);
+      const prd = (rx) => { const m = entry.remark.match(rx); if (!m) return ""; return `${year}-${String(parseInt(m[1])).padStart(2,"0")}-${String(parseInt(m[2])).padStart(2,"0")}`; };
+      const fm = prd(/1차 통머지\s*-\s*(\d+)\/(\d+)/);
+      const lm = prd(/마지막 통머지\s*-\s*(\d+)\/(\d+)/);
+      if (fm && !data[d].firstMerge) data[d].firstMerge = fm;
+      if (lm && !data[d].lastMerge) data[d].lastMerge = lm;
+    }
+    if (entry.note) {
+      const dt = new Date(d + "T00:00:00");
+      addPending(`${dt.getFullYear()}-${dt.getMonth() + 1}`, entry.note);
+    }
+  });
+  return { data, pending };
+})();
+
+export default function ArtSchedule() {
+  const [mode, setMode] = useState("dark");
+  const t = themes[mode];
+  const [tab, setTab] = useState("schedule");
+
+  const [teams, setTeams] = useState(INIT_TEAMS);
+  const [milestones, setMilestones] = useState(() => INIT_MS.map(m => ({ ...m, status: m.status || "upcoming" })));
+  const [tasks, setTasks] = useState(INIT_TASKS);
+  const [customHolidays, setCustomHolidays] = useState([]);
+
+  const [displayMonths, setDisplayMonths] = useState(() => {
+    const m = [];
+    for (let i = 0; i < 12; i++) m.push({ year: 2025, month: i });
+    for (let i = 0; i < 12; i++) m.push({ year: 2026, month: i });
+    return m;
+  });
+
+  const [updateData, setUpdateData] = useState(INIT_UPDATE.data);
+  const [editingUpdate, setEditingUpdate] = useState(null);
+  const [hiddenUpdateDates, setHiddenUpdateDates] = useState([]);
+  const [showPastUpdates, setShowPastUpdates] = useState(false);
+  const [updateSelect, setUpdateSelect] = useState(null);
+  const updateDragRef = useRef(null);
+  const [pendingByMonth, setPendingByMonth] = useState(INIT_UPDATE.pending);
+  const [updateWide, setUpdateWide] = useState(false);
+  const [updateTeamFilter, setUpdateTeamFilter] = useState("전체");
+  const [dragItem, setDragItem] = useState(null);
+  const [dragOverDate, setDragOverDate] = useState(null);
+  const [updateColWidths, setUpdateColWidths] = useState([55, 85, 0, 130, 115, 115, 125]);
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchRef = useRef(null);
+
+  const [editingTask, setEditingTask] = useState(null);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [editingMilestone, setEditingMilestone] = useState(null);
+  const [showMilestoneModal, setShowMilestoneModal] = useState(false);
+  const [showTeamModal, setShowTeamModal] = useState(false);
+  const [teamModalMode, setTeamModalMode] = useState("add");
+  const [editingTeam, setEditingTeam] = useState(null);
+  const [showMemberModal, setShowMemberModal] = useState(false);
+  const [targetTeamId, setTargetTeamId] = useState(null);
+  const [contextMenu, setContextMenu] = useState(null);
+  const [dragState, setDragState] = useState(null);
+  const [teamDragIdx, setTeamDragIdx] = useState(null);
+  const [teamDragOverIdx, setTeamDragOverIdx] = useState(null);
+  const [editingMember, setEditingMember] = useState(null);
+  const [draggingTaskId, setDraggingTaskId] = useState(null);
+  const [dragOverMemberId, setDragOverMemberId] = useState(null);
+  const [collapsedTeams, setCollapsedTeams] = useState([]);
+  const [memberDrag, setMemberDrag] = useState(null);
+  const [memberDragOver, setMemberDragOver] = useState(null);
+  const [zoomIdx, setZoomIdx] = useState(1);
+  const zoom = ZOOM_LEVELS[zoomIdx];
+  const CELL_W = zoom.cellW, CELL_H = zoom.cellH;
+
+  const [hiddenDates, setHiddenDates] = useState(() => {
+    const h = [];
+    const cutoff = new Date(2026, 0, 31);
+    for (let y = 2025; y <= 2026; y++) {
+      const mEnd = y === 2025 ? 12 : 1;
+      for (let m = (y === 2025 ? 0 : 0); m < mEnd; m++) {
+        const dim = new Date(y, m + 1, 0).getDate();
+        for (let d = 1; d <= dim; d++) {
+          const dt = new Date(y, m, d);
+          if (dt >= cutoff) break;
+          if (dt.getDay() !== 0 && dt.getDay() !== 6) h.push(fmt(dt));
+        }
+      }
+    }
+    return h;
+  });
+  const [headerSelect, setHeaderSelect] = useState(null);
+  const [seatData, setSeatData] = useState(INITIAL_SEAT_DATA);
+  const [editingSeat, setEditingSeat] = useState(null);
+  const [seatSwapConfirm, setSeatSwapConfirm] = useState(null);
+  const seatDragRef = useRef(null);
+
+  // ─── 기기/TO 현황 상태 ───
+  const [devices, setDevices] = useState(INIT_DEVICES);
+  const [editingDevice, setEditingDevice] = useState(null);
+  const [toData, setToData] = useState(INIT_TO_DATA);
+  const [editingTo, setEditingTo] = useState(null);
+  const [deadlineMsId, setDeadlineMsId] = useState(null);
+  const undoStack = useRef([]);
+  const [changeLog, setChangeLog] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const stateRef = useRef();
+  stateRef.current = { teams, tasks, milestones, customHolidays, updateData, pendingByMonth, seatData, hiddenDates, hiddenUpdateDates, showPastUpdates, devices, toData };
+  const pushUndo = useCallback((desc) => {
+    undoStack.current.push({ ...stateRef.current });
+    if (undoStack.current.length > 50) undoStack.current.shift();
+    setChangeLog(prev => [...prev, { desc, time: new Date().toLocaleTimeString() }]);
+  }, []);
+
+  const undo = useCallback(() => {
+    if (undoStack.current.length === 0) return;
+    const snap = undoStack.current.pop();
+    setTeams(snap.teams); setTasks(snap.tasks); setMilestones(snap.milestones);
+    setCustomHolidays(snap.customHolidays); setUpdateData(snap.updateData); if (snap.pendingByMonth !== undefined) setPendingByMonth(snap.pendingByMonth); setSeatData(snap.seatData);
+    if (snap.hiddenDates !== undefined) setHiddenDates(snap.hiddenDates);
+    if (snap.hiddenUpdateDates !== undefined) setHiddenUpdateDates(snap.hiddenUpdateDates);
+    if (snap.showPastUpdates !== undefined) setShowPastUpdates(snap.showPastUpdates);
+    if (snap.devices !== undefined) setDevices(snap.devices);
+    if (snap.toData !== undefined) setToData(snap.toData);
+    setChangeLog(prev => [...prev, { desc: "↩ 실행취소", time: new Date().toLocaleTimeString() }]);
+  }, []);
+
+  const [leftW, setLeftW] = useState(DEFAULT_LEFT_W);
+  const teamW = Math.round(leftW * TEAM_W_RATIO);
+  const resizingRef = useRef(false);
+  const [tooltip, setTooltip] = useState(null);
+  const tooltipTimer = useRef(null);
+
+  const leftBodyRef = useRef(null);
+  const gridRef = useRef(null);
+
+  const todayStr = useMemo(() => fmt(new Date()), []);
+
+  const deadlineInfo = useMemo(() => {
+    if (!deadlineMsId) return null;
+    const ms = milestones.find(m => m.id === deadlineMsId);
+    if (!ms) return null;
+    const target = ms.endDate;
+    if (!target) return null;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const deadline = new Date(target); deadline.setHours(0, 0, 0, 0);
+    const diff = Math.ceil((deadline - today) / (1000 * 60 * 60 * 24));
+    return { name: ms.name, date: target, dDay: diff };
+  }, [deadlineMsId, milestones]);
+
+  const allDates = useMemo(() => genMonthDates(displayMonths), [displayMonths]);
+  const hiddenSet = useMemo(() => new Set(hiddenDates), [hiddenDates]);
+  const dates = useMemo(() => hiddenDates.length === 0 ? allDates : allDates.filter(d => !hiddenSet.has(fmt(d))), [allDates, hiddenDates, hiddenSet]);
+  const thursdays = useMemo(() => genThursdays(displayMonths), [displayMonths]);
+  const thursdaysByMonth = useMemo(() => {
+    const g = []; let c = null;
+    thursdays.forEach(d => {
+      const k = `${d.getFullYear()}-${d.getMonth()}`;
+      if (!c || c.key !== k) { c = { key: k, year: d.getFullYear(), month: d.getMonth() + 1, dates: [] }; g.push(c); }
+      c.dates.push(d);
+    });
+    return g;
+  }, [thursdays]);
+
+  const hiddenUpdateSet = useMemo(() => new Set(hiddenUpdateDates), [hiddenUpdateDates]);
+  const pastThursdayCount = useMemo(() => thursdays.filter(d => hiddenSet.has(fmt(d))).length, [thursdays, hiddenSet]);
+  const visibleThursdays = useMemo(() => thursdays.filter(d => {
+    const ds = fmt(d);
+    if (hiddenUpdateSet.has(ds)) return false;
+    if (!showPastUpdates && hiddenSet.has(ds)) return false;
+    return true;
+  }), [thursdays, hiddenSet, hiddenUpdateSet, showPastUpdates]);
+  const visibleThursdaysByMonth = useMemo(() => {
+    const g = []; let c = null;
+    visibleThursdays.forEach(d => {
+      const k = `${d.getFullYear()}-${d.getMonth()}`;
+      if (!c || c.key !== k) { c = { key: k, year: d.getFullYear(), month: d.getMonth() + 1, dates: [] }; g.push(c); }
+      c.dates.push(d);
+    });
+    return g;
+  }, [visibleThursdays]);
+
+  const firstDateStr = useMemo(() => {
+    if (displayMonths.length === 0) return fmt(new Date());
+    const { year, month } = displayMonths[0];
+    return fmt(new Date(year, month, 1));
+  }, [displayMonths]);
+
+  const getHoliday = useCallback((d) => {
+    const ds = fmt(d);
+    if (KOREAN_HOLIDAYS[ds]) return KOREAN_HOLIDAYS[ds];
+    if (customHolidays.includes(ds)) return "전체 휴무";
+    return null;
+  }, [customHolidays]);
+
+  const toggleCustomHoliday = useCallback((d) => {
+    const ds = fmt(d);
+    if (KOREAN_HOLIDAYS[ds]) return;
+    pushUndo("휴무일 변경");
+    setCustomHolidays(prev => prev.includes(ds) ? prev.filter(x => x !== ds) : [...prev, ds]);
+  }, []);
+
+  const addMonth = () => {
+    setDisplayMonths(prev => {
+      const last = prev[prev.length - 1];
+      let ny = last.year, nm = last.month + 1;
+      if (nm > 11) { ny++; nm = 0; }
+      return [...prev, { year: ny, month: nm }];
+    });
+  };
+
+  const showAllDates = useCallback(() => { pushUndo("숨긴 날짜 전체 표시"); setHiddenDates([]); setHeaderSelect(null); }, []);
+
+  const hideSelectedDates = useCallback(() => {
+    if (!headerSelect) return;
+    pushUndo("날짜 숨기기");
+    const lo = Math.min(headerSelect.startIdx, headerSelect.endIdx);
+    const hi = Math.max(headerSelect.startIdx, headerSelect.endIdx);
+    const toHide = [];
+    for (let i = lo; i <= hi; i++) toHide.push(fmt(dates[i]));
+    setHiddenDates(prev => { const s = new Set(prev); toHide.forEach(d => s.add(d)); return [...s]; });
+    setHeaderSelect(null);
+  }, [headerSelect, dates]);
+
+  const unhideGap = useCallback((afterIdx) => {
+    pushUndo("숨긴 날짜 복원");
+    const allIdx = {};
+    allDates.forEach((d, i) => { allIdx[fmt(d)] = i; });
+    let fromI, toI;
+    if (afterIdx === -1) { fromI = 0; toI = dates.length > 0 ? allIdx[fmt(dates[0])] : allDates.length; }
+    else if (afterIdx >= dates.length - 1) { fromI = allIdx[fmt(dates[dates.length - 1])] + 1; toI = allDates.length; }
+    else { fromI = allIdx[fmt(dates[afterIdx])] + 1; toI = allIdx[fmt(dates[afterIdx + 1])]; }
+    const toUnhide = new Set();
+    for (let i = fromI; i < toI; i++) toUnhide.add(fmt(allDates[i]));
+    setHiddenDates(prev => prev.filter(d => !toUnhide.has(d)));
+  }, [dates, allDates]);
+
+  const hiddenGaps = useMemo(() => {
+    if (hiddenDates.length === 0) return [];
+    const gaps = [];
+    const allIdx = {};
+    allDates.forEach((d, i) => { allIdx[fmt(d)] = i; });
+    if (dates.length > 0) {
+      const fi = allIdx[fmt(dates[0])];
+      if (fi > 0) gaps.push({ pos: 0, count: fi, afterIdx: -1 });
+    }
+    for (let i = 0; i < dates.length - 1; i++) {
+      const diff = allIdx[fmt(dates[i + 1])] - allIdx[fmt(dates[i])];
+      if (diff > 1) gaps.push({ pos: (i + 1) * CELL_W, count: diff - 1, afterIdx: i });
+    }
+    if (dates.length > 0) {
+      const li = allIdx[fmt(dates[dates.length - 1])];
+      if (li < allDates.length - 1) gaps.push({ pos: dates.length * CELL_W, count: allDates.length - 1 - li, afterIdx: dates.length - 1 });
+    }
+    return gaps;
+  }, [dates, allDates, hiddenDates, CELL_W]);
+
+  const toggleCollapse = useCallback((teamId) => {
+    setCollapsedTeams(prev => prev.includes(teamId) ? prev.filter(x => x !== teamId) : [...prev, teamId]);
+  }, []);
+
+  const handleMemberDragStart = (e, teamId, mIdx) => { e.stopPropagation(); setMemberDrag({ teamId, mIdx }); e.dataTransfer.effectAllowed = "move"; };
+  const handleMemberDragOver = (e, teamId, mIdx) => { e.preventDefault(); e.stopPropagation(); if (memberDrag && memberDrag.teamId === teamId) setMemberDragOver({ teamId, mIdx }); };
+  const handleMemberDrop = (e, teamId, mIdx) => {
+    e.preventDefault(); e.stopPropagation();
+    if (memberDrag && memberDrag.teamId === teamId && memberDrag.mIdx !== mIdx) {
+      pushUndo("인원 순서 변경");
+      setTeams(prev => prev.map(team => {
+        if (team.id !== teamId) return team;
+        const ms = [...team.members]; const [moved] = ms.splice(memberDrag.mIdx, 1); ms.splice(mIdx, 0, moved); return { ...team, members: ms };
+      }));
+    }
+    setMemberDrag(null); setMemberDragOver(null);
+  };
+  const handleMemberDragEnd = () => { setMemberDrag(null); setMemberDragOver(null); };
+
+  const flatRows = useMemo(() => {
+    const rows = [];
+    teams.forEach((team) => {
+      const collapsed = collapsedTeams.includes(team.id);
+      if (team.members.length === 0) rows.push({ teamId: team.id, teamName: team.name, memberId: "__empty_" + team.id, memberName: "", isEmpty: true, isLeader: false, mIdx: 0 });
+      else {
+        const visibleMembers = collapsed ? [team.members[0]] : team.members;
+        visibleMembers.forEach((member, idx) => rows.push({ teamId: team.id, teamName: team.name, memberId: member.id, memberName: member.name, isEmpty: false, isLeader: idx === 0, mIdx: collapsed ? 0 : idx }));
+      }
+    });
+    return rows;
+  }, [teams, collapsedTeams]);
+
+  const dateColMap = useMemo(() => { const m = new Map(); dates.forEach((d, i) => m.set(fmt(d), i)); return m; }, [dates]);
+  const dateToCol = useCallback((dateStr) => { const v = dateColMap.get(dateStr); return v !== undefined ? v : -1; }, [dateColMap]);
+  const holidayIndices = useMemo(() => { const arr = []; dates.forEach((d, i) => { if (getHoliday(d)) arr.push(i); }); return arr; }, [dates, customHolidays]);
+  const memberRowMap = useMemo(() => { const m = new Map(); flatRows.forEach((r, i) => m.set(r.memberId, i)); return m; }, [flatRows]);
+
+  const handleCellMouseDown = (memberId, idx) => { if (flatRows.find((r) => r.memberId === memberId)?.isEmpty) return; setDragState({ memberId, startIdx: idx, endIdx: idx }); };
+  const handleCellMouseEnter = (memberId, idx) => { if (dragState && dragState.memberId === memberId) setDragState((p) => ({ ...p, endIdx: idx })); };
+  const handleCellMouseUp = () => {
+    if (dragState) {
+      const lo = Math.min(dragState.startIdx, dragState.endIdx), hi = Math.max(dragState.startIdx, dragState.endIdx);
+      setEditingTask({ id: null, memberId: dragState.memberId, title: "", startDate: fmt(dates[lo]), endDate: fmt(dates[hi]), status: "planned" });
+      setShowTaskModal(true); setDragState(null);
+    }
+  };
+
+  const saveTask = (task) => { pushUndo(task.id ? "일정 수정" : "일정 추가"); if (task.id) setTasks((p) => p.map((x) => x.id === task.id ? task : x)); else setTasks((p) => [...p, { ...task, id: "task_" + Date.now() }]); setShowTaskModal(false); setEditingTask(null); };
+  const deleteTask = (id) => { pushUndo("일정 삭제"); setTasks((p) => p.filter((x) => x.id !== id)); setShowTaskModal(false); setEditingTask(null); };
+  const saveMilestone = (ms) => {
+    const others = milestones.filter(x => x.id !== ms.id);
+    const hasOverlap = others.some(o => ms.startDate <= o.endDate && ms.endDate >= o.startDate);
+    if (hasOverlap) { alert("마일스톤 날짜가 다른 마일스톤과 겹칩니다. 날짜를 조정해주세요."); return; }
+    pushUndo(ms.id ? "마일스톤 수정" : "마일스톤 추가");
+    if (ms.id) setMilestones((p) => p.map((x) => x.id === ms.id ? ms : x)); else setMilestones((p) => [...p, { ...ms, id: "ms_" + Date.now() }]); setShowMilestoneModal(false); setEditingMilestone(null);
+  };
+  const deleteMilestone = (id) => { pushUndo("마일스톤 삭제"); setMilestones((p) => p.filter((x) => x.id !== id)); setShowMilestoneModal(false); setEditingMilestone(null); };
+
+  const addTeam = (name) => { pushUndo("팀 추가"); setTeams((p) => [...p, { id: "t_" + Date.now(), name, members: [] }]); setShowTeamModal(false); };
+  const renameTeam = (teamId, name) => { pushUndo("팀 이름 변경"); setTeams((p) => p.map((x) => x.id === teamId ? { ...x, name } : x)); setShowTeamModal(false); setEditingTeam(null); };
+  const removeTeam = (teamId) => { pushUndo("팀 삭제"); setTeams((p) => { const mIds = p.find((x) => x.id === teamId)?.members.map((m) => m.id) || []; setTasks((pt) => pt.filter((x) => !mIds.includes(x.memberId))); return p.filter((x) => x.id !== teamId); }); };
+  const addMember = (teamId, name, email) => { pushUndo("인원 추가"); setTeams((p) => p.map((x) => x.id === teamId ? { ...x, members: [...x.members, { id: "m_" + Date.now(), name, email: email || "", role: "사원", concurrent: false, roles: ["사원"] }] } : x)); setShowMemberModal(false); };
+  const removeMember = (teamId, memberId) => { pushUndo("인원 제거"); setTeams((p) => p.map((x) => x.id === teamId ? { ...x, members: x.members.filter((m) => m.id !== memberId) } : x)); setTasks((p) => p.filter((x) => x.memberId !== memberId)); };
+
+  const handleTeamDragStart = (e, idx) => { setTeamDragIdx(idx); e.dataTransfer.effectAllowed = "move"; };
+  const handleTeamDragOver = (e, idx) => { e.preventDefault(); setTeamDragOverIdx(idx); };
+  const handleTeamDrop = (idx) => { if (teamDragIdx !== null && teamDragIdx !== idx) { pushUndo("팀 순서 변경"); setTeams((prev) => { const a = [...prev]; const [r] = a.splice(teamDragIdx, 1); a.splice(idx, 0, r); return a; }); } setTeamDragIdx(null); setTeamDragOverIdx(null); };
+  const handleTeamDragEnd = () => { setTeamDragIdx(null); setTeamDragOverIdx(null); };
+
+  const updateMember = (oldTeamId, newTeamId, memberId, newName, newEmail, newRole, newConcurrent, newRoles) => {
+    if (!newName.trim()) return;
+    pushUndo("인원 수정");
+    const patch = { name: newName.trim(), email: (newEmail || "").trim(), role: newRole || "사원", concurrent: newConcurrent ?? false, roles: newRoles || [newRole || "사원"] };
+    if (oldTeamId === newTeamId) {
+      setTeams((p) => p.map((team) => team.id === oldTeamId ? { ...team, members: team.members.map((m) => m.id === memberId ? { ...m, ...patch } : m) } : team));
+    } else {
+      setTeams((p) => {
+        const oldTeam = p.find((x) => x.id === oldTeamId);
+        const member = oldTeam?.members.find((m) => m.id === memberId);
+        if (!member) return p;
+        const updated = { ...member, ...patch };
+        return p.map((team) => {
+          if (team.id === oldTeamId) return { ...team, members: team.members.filter((m) => m.id !== memberId) };
+          if (team.id === newTeamId) return { ...team, members: [...team.members, updated] };
+          return team;
+        });
+      });
+    }
+    setEditingMember(null);
+  };
+  const handleTaskDragStart = (e, taskId) => { setDraggingTaskId(taskId); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", taskId); };
+  const handleTaskDragEnd = () => { setDraggingTaskId(null); setDragOverMemberId(null); };
+  const handleRowDragOver = (e, memberId) => { if (!draggingTaskId) return; e.preventDefault(); e.stopPropagation(); setDragOverMemberId(memberId); };
+  const handleRowDrop = (e, memberId) => { e.preventDefault(); e.stopPropagation(); if (draggingTaskId && memberId) { const row = flatRows.find((r) => r.memberId === memberId); if (row && !row.isEmpty) { pushUndo("일정 이동"); setTasks((p) => p.map((x) => x.id === draggingTaskId ? { ...x, memberId } : x)); } } setDraggingTaskId(null); setDragOverMemberId(null); };
+
+  const toArr = (v) => Array.isArray(v) ? v : (v ? v.split("\n").filter(Boolean) : []);
+  const monthKey = (ds) => { const d = new Date(ds + "T00:00:00"); return `${d.getFullYear()}-${d.getMonth() + 1}`; };
+  const saveUpdateEntry = (dateStr, data) => {
+    pushUndo("업데이트 항목 편집");
+    const { pending, ...dateData } = data;
+    setUpdateData(prev => ({ ...prev, [dateStr]: dateData }));
+    if (pending !== undefined) {
+      const mk = monthKey(dateStr);
+      setPendingByMonth(prev => ({ ...prev, [mk]: pending }));
+    }
+    setEditingUpdate(null);
+  };
+  const moveItem = (fromKey, toKey, field, index) => {
+    if (fromKey === toKey) return;
+    pushUndo("항목 이동");
+    if (field === "pending") {
+      setPendingByMonth(prev => {
+        const next = { ...prev };
+        const fa = [...toArr(next[fromKey])];
+        const item = fa.splice(index, 1)[0];
+        if (!item) return prev;
+        const ta = [...toArr(next[toKey])];
+        ta.push(item);
+        next[fromKey] = fa;
+        next[toKey] = ta;
+        return next;
+      });
+    } else {
+      setUpdateData(prev => {
+        const next = { ...prev };
+        const fe = { ...(next[fromKey] || {}) };
+        const te = { ...(next[toKey] || {}) };
+        const fa = [...toArr(fe[field])];
+        const item = fa.splice(index, 1)[0];
+        if (!item) return prev;
+        const ta = [...toArr(te[field])];
+        ta.push(item);
+        fe[field] = fa;
+        te[field] = ta;
+        // move itemTeams in sync
+        const ftArr = [...(fe.itemTeams || [])];
+        const movedTeams = ftArr.splice(index, 1)[0] || [];
+        const ttArr = [...(te.itemTeams || [])];
+        ttArr.push(movedTeams);
+        fe.itemTeams = ftArr;
+        te.itemTeams = ttArr;
+        next[fromKey] = fe;
+        next[toKey] = te;
+        return next;
+      });
+    }
+  };
+  const startColResize = (e, colIdx) => {
+    e.preventDefault(); e.stopPropagation();
+    const startX = e.clientX;
+    const w = updateColWidths[colIdx];
+    const nextIdx = colIdx + 1;
+    const wNext = nextIdx < updateColWidths.length ? updateColWidths[nextIdx] : 0;
+    const onMove = (ev) => {
+      const diff = ev.clientX - startX;
+      setUpdateColWidths(prev => {
+        const next = [...prev];
+        if (w > 0 && wNext > 0) { next[colIdx] = Math.max(30, w + diff); next[nextIdx] = Math.max(30, wNext - diff); }
+        else if (w > 0) { next[colIdx] = Math.max(30, w + diff); }
+        else if (wNext > 0) { next[nextIdx] = Math.max(30, wNext - diff); }
+        return next;
+      });
+    };
+    const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
+  const hideUpdateSelection = () => {
+    if (!updateSelect) return;
+    const flat = visibleThursdaysByMonth.flatMap(g => g.dates.map(d => fmt(d)));
+    const si = flat.indexOf(updateSelect.start), ei = flat.indexOf(updateSelect.end);
+    if (si < 0 || ei < 0) return;
+    const lo = Math.min(si, ei), hi = Math.max(si, ei);
+    const toHide = flat.slice(lo, hi + 1);
+    pushUndo("업데이트 일정 숨기기");
+    setHiddenUpdateDates(prev => [...prev, ...toHide]);
+    setUpdateSelect(null);
+  };
+  const togglePastUpdates = () => { setShowPastUpdates(prev => !prev); };
+  const showHiddenUpdateRows = () => { if (hiddenUpdateDates.length === 0) return; pushUndo("숨긴 업데이트 복원"); setHiddenUpdateDates([]); };
+
+  const updateSeat = useCallback((secIdx, rowIdx, colIdx, updates) => {
+    pushUndo("좌석 수정");
+    setSeatData(prev => prev.map((sec, si) => si !== secIdx ? sec : {
+      ...sec, rows: sec.rows.map((row, ri) => ri !== rowIdx ? row : row.map((cell, ci) => ci !== colIdx ? cell : cell ? { ...cell, ...updates } : cell))
+    }));
+    setEditingSeat(null);
+  }, []);
+
+  const swapSeats = useCallback((from, to) => {
+    pushUndo("좌석 이동");
+    setSeatData(prev => {
+      const d = JSON.parse(JSON.stringify(prev));
+      const fCell = d[from.si].rows[from.ri][from.ci];
+      const tCell = d[to.si].rows[to.ri][to.ci];
+      d[from.si].rows[from.ri][from.ci] = { ...fCell, team: tCell.team || "", name: tCell.name || "", isLead: tCell.isLead || false };
+      d[to.si].rows[to.ri][to.ci] = { ...tCell, team: fCell.team || "", name: fCell.name || "", isLead: fCell.isLead || false };
+      return d;
+    });
+  }, []);
+
+  const memberInfoMap = useMemo(() => {
+    const m = {};
+    (teams || []).forEach(team => {
+      (team.members || []).forEach(mb => { m[mb.name] = { team: team.name, role: mb.role, email: mb.email, roles: mb.roles }; });
+    });
+    return m;
+  }, [teams]);
+
+  const toCurrentCount = useMemo(() => {
+    const counts = {};
+    toData.forEach(row => {
+      counts[row.id] = teams.filter(tm => row.teamNames.includes(tm.name)).reduce((sum, tm) => sum + tm.members.length, 0);
+    });
+    return counts;
+  }, [teams, toData]);
+
+  const allMembers = useMemo(() => teams.flatMap(tm => tm.members.map(m => ({ name: m.name, team: tm.name }))), [teams]);
+
+  const searchMatch = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return null;
+    const matchedTaskIds = new Set();
+    const matchedMemberIds = new Set();
+    tasks.forEach(tk => {
+      if (tk.title.toLowerCase().includes(q)) { matchedTaskIds.add(tk.id); matchedMemberIds.add(tk.memberId); }
+    });
+    teams.forEach(tm => tm.members.forEach(mb => {
+      if (mb.name.toLowerCase().includes(q)) {
+        matchedMemberIds.add(mb.id);
+        tasks.forEach(tk => { if (tk.memberId === mb.id) matchedTaskIds.add(tk.id); });
+      }
+    }));
+    return { taskIds: matchedTaskIds, memberIds: matchedMemberIds };
+  }, [searchQuery, tasks, teams]);
+
+  const saveDevice = useCallback((dev) => {
+    pushUndo(dev.id ? "기기 수정" : "기기 추가");
+    setDevices(p => {
+      if (dev.id && p.some(d => d.id === dev.id)) return p.map(d => d.id === dev.id ? dev : d);
+      return [...p, { ...dev, id: "dev_" + Date.now() }];
+    });
+    setEditingDevice(null);
+  }, []);
+
+  const deleteDevice = useCallback((id) => {
+    pushUndo("기기 삭제");
+    setDevices(p => p.filter(d => d.id !== id));
+    setEditingDevice(null);
+  }, []);
+
+  const saveToRow = useCallback((row) => {
+    pushUndo("TO 현황 수정");
+    setToData(p => p.map(r => r.id === row.id ? row : r));
+    setEditingTo(null);
+  }, []);
+
+  useEffect(() => { const cl = () => { setContextMenu(null); setHeaderSelect(null); }; window.addEventListener("click", cl); return () => window.removeEventListener("click", cl); }, []);
+  useEffect(() => { const h = (e) => { if ((e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); undo(); } }; window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); }, [undo]);
+  useEffect(() => {
+    const g = gridRef.current; const hs = document.getElementById("hdr-scroll");
+    const handler = (e) => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.preventDefault(); const amt = e.deltaY; if (g) { g.scrollLeft += amt; } if (hs) { hs.scrollLeft = g ? g.scrollLeft : hs.scrollLeft + amt; } } };
+    if (g) g.addEventListener("wheel", handler, { passive: false });
+    if (hs) hs.addEventListener("wheel", handler, { passive: false });
+    return () => { if (g) g.removeEventListener("wheel", handler); if (hs) hs.removeEventListener("wheel", handler); };
+  }, [tab]);
+
+  useEffect(() => {
+    const onUp = () => setHeaderSelect(p => (p && p.dragging) ? { ...p, dragging: false } : p);
+    document.addEventListener("mouseup", onUp);
+    return () => document.removeEventListener("mouseup", onUp);
+  }, []);
+
+  useEffect(() => {
+    if (headerSelect && !headerSelect.dragging && headerSelect.startIdx === headerSelect.endIdx) {
+      const d = dates[headerSelect.startIdx];
+      if (d) toggleCustomHoliday(d);
+      setHeaderSelect(null);
+    }
+  }, [headerSelect, dates, toggleCustomHoliday]);
+
+  useEffect(() => {
+    const id = "artboard-scrollbar-style";
+    let el = document.getElementById(id);
+    if (!el) { el = document.createElement("style"); el.id = id; document.head.appendChild(el); }
+    if (mode === "dark") {
+      el.textContent = `*::-webkit-scrollbar{width:8px;height:8px}*::-webkit-scrollbar-track{background:transparent}*::-webkit-scrollbar-thumb{background:#323544;border-radius:4px}*::-webkit-scrollbar-thumb:hover{background:#3e4258}*::-webkit-scrollbar-corner{background:transparent}`;
+    } else {
+      el.textContent = `*::-webkit-scrollbar{width:8px;height:8px}*::-webkit-scrollbar-track{background:transparent}*::-webkit-scrollbar-thumb{background:#d0d7de;border-radius:4px}*::-webkit-scrollbar-thumb:hover{background:#afb8c1}*::-webkit-scrollbar-corner{background:transparent}`;
+    }
+  }, [mode]);
+
+  const leftWRef = useRef(leftW);
+  leftWRef.current = leftW;
+  const handleResizeStart = useCallback((e) => {
+    e.preventDefault();
+    resizingRef.current = true;
+    const startX = e.clientX, startW = leftWRef.current;
+    const onMove = (ev) => { if (resizingRef.current) setLeftW(Math.max(120, Math.min(400, startW + ev.clientX - startX))); };
+    const onUp = () => { resizingRef.current = false; document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, []);
+
+  const showTooltip = useCallback((e, data) => {
+    if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
+    const rect = e.currentTarget.getBoundingClientRect();
+    tooltipTimer.current = setTimeout(() => setTooltip({ x: rect.right + 8, y: rect.top, ...data }), 350);
+  }, []);
+  const hideTooltip = useCallback(() => { if (tooltipTimer.current) clearTimeout(tooltipTimer.current); setTooltip(null); }, []);
+
+  const monthGroups = useMemo(() => {
+    const g = []; let c = null;
+    dates.forEach((d, i) => { const k = `${d.getFullYear()}-${d.getMonth()}`; if (!c || c.key !== k) { c = { key: k, year: d.getFullYear(), month: d.getMonth() + 1, start: i, count: 1 }; g.push(c); } else c.count++; });
+    return g;
+  }, [dates]);
+
+  const milestonePositions = useMemo(() => {
+    return milestones.map((ms) => {
+      let s = -1, e = -1;
+      for (let i = 0; i < dates.length; i++) { const ds = fmt(dates[i]); if (ds >= ms.startDate && ds <= ms.endDate) { s = i; break; } }
+      for (let i = dates.length - 1; i >= 0; i--) { const ds = fmt(dates[i]); if (ds >= ms.startDate && ds <= ms.endDate) { e = i; break; } }
+      if (s < 0 || e < 0 || s > e) return null;
+      return { ...ms, sCol: s, eCol: e };
+    }).filter(Boolean);
+  }, [milestones, dates]);
+
+  const teamSections = useMemo(() => {
+    let off = 0;
+    return teams.map((team, idx) => { const collapsed = collapsedTeams.includes(team.id); const cnt = collapsed ? 1 : Math.max(team.members.length, 1); const sec = { team, startRow: off, rowCount: cnt, idx }; off += cnt; return sec; });
+  }, [teams, collapsedTeams]);
+
+  const totalRows = flatRows.length;
+
+  const syncScroll = (src) => {
+    if (src === "left" && gridRef.current && leftBodyRef.current) gridRef.current.scrollTop = leftBodyRef.current.scrollTop;
+    if (src === "grid" && leftBodyRef.current && gridRef.current) { leftBodyRef.current.scrollTop = gridRef.current.scrollTop; const hs = document.getElementById("hdr-scroll"); if (hs) hs.scrollLeft = gridRef.current.scrollLeft; }
+    if (src === "header" && gridRef.current) { const hs = document.getElementById("hdr-scroll"); if (hs) gridRef.current.scrollLeft = hs.scrollLeft; }
+  };
+
+  const scrollToToday = useCallback(() => {
+    const ti = dateToCol(todayStr);
+    if (ti < 0) { alert("오늘 날짜가 범위 밖입니다"); return; }
+    const g = gridRef.current; if (!g) return;
+    const targetLeft = ti * CELL_W + Math.floor(CELL_W / 2) - Math.floor(g.clientWidth / 2);
+    g.scrollLeft = Math.max(0, targetLeft);
+    const hs = document.getElementById("hdr-scroll");
+    if (hs) hs.scrollLeft = g.scrollLeft;
+  }, [dateToCol, todayStr, CELL_W]);
+
+  const lastM = displayMonths[displayMonths.length - 1];
+  const monthLabel = `${displayMonths[0].year}.${displayMonths[0].month + 1} ~ ${lastM.year}.${lastM.month + 1}`;
+
+  const tabBtn = (id, label, iconName) => (
+    <button key={id} onClick={() => setTab(id)}
+      style={{ padding: "5px 16px", background: tab === id ? t.btnBg : "transparent", border: `1px solid ${tab === id ? t.btnBg : (mode === "dark" ? "#323544" : t.border)}`, borderRadius: 6, color: tab === id ? t.btnFg : t.textDim, cursor: "pointer", fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 5 }}>
+      <LuIcon name={iconName} size={14} />{label}
+    </button>
+  );
+
+  return (
+    <div style={{ fontFamily: "'Pretendard Variable','Noto Sans KR',-apple-system,sans-serif", height: "100vh", display: "flex", flexDirection: "column", background: t.bg, color: t.text, overflow: "hidden", transition: "background .25s,color .25s" }}>
+
+      {/* ─── 마감 카운트다운 ─── */}
+      {milestones.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 14px", background: deadlineInfo && deadlineInfo.dDay <= 7 ? (mode === "dark" ? "rgba(160,85,96,0.15)" : "rgba(229,57,53,0.08)") : (mode === "dark" ? "rgba(120,137,168,0.1)" : "rgba(74,85,224,0.06)"), borderBottom: `1px solid ${t.border}`, flexShrink: 0, fontSize: 12 }}>
+          <select value={deadlineMsId || ""} onChange={(e) => setDeadlineMsId(e.target.value || null)} style={{ padding: "3px 8px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.text, borderRadius: 5, fontSize: 11, outline: "none", cursor: "pointer" }}>
+            <option value="">마일스톤 선택</option>
+            {milestones.map(ms => <option key={ms.id} value={ms.id}>{ms.name}</option>)}
+          </select>
+          {deadlineInfo && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontWeight: 800, fontSize: 14, color: deadlineInfo.dDay <= 0 ? t.accentAlt : deadlineInfo.dDay <= 7 ? "#ff9800" : t.accent }}>
+                {deadlineInfo.dDay > 0 ? `D-${deadlineInfo.dDay}` : deadlineInfo.dDay === 0 ? "D-Day" : `D+${Math.abs(deadlineInfo.dDay)}`}
+              </span>
+              <span style={{ color: t.text, fontWeight: 600 }}>{deadlineInfo.name} 아트 마감</span>
+              <span style={{ color: t.textDim, fontSize: 11 }}>({deadlineInfo.date})</span>
+            </div>
+          )}
+          {!deadlineInfo && deadlineMsId && <span style={{ color: t.textDim, fontSize: 11 }}>마감일이 설정되지 않았습니다</span>}
+        </div>
+      )}
+
+      {/* ─── 헤더 ─── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 14px", background: t.panelBg, borderBottom: `1px solid ${t.border}`, flexShrink: 0, flexWrap: "wrap" }}>
+        <div style={{ fontWeight: 800, fontSize: 15, color: t.accent, letterSpacing: .5 }}>NC 아트실</div>
+        {tab === "schedule" && <>
+          <Sep t={t} />
+          <span style={{ fontSize: 11, color: t.textDim }}>{monthLabel}</span>
+          <button onClick={addMonth} style={btn(t.btnBg, t.btnFg)}><LuIcon name="calendarPlus" size={14} /> 월 추가</button>
+          {hiddenDates.length > 0 && <button onClick={(e) => { e.stopPropagation(); showAllDates(); }} style={btn(t.deleteBg, t.deleteFg)} title="숨긴 날짜를 모두 표시합니다"><LuIcon name="eyeOff" size={14} /> 숨긴 {hiddenDates.length}일</button>}
+        </>}
+        {tab === "schedule" && <>
+          <Sep t={t} />
+          <button onClick={() => {
+            let mx = 0; milestones.forEach(m => { const mt = m.name.match(/^M(\d+)$/); if (mt) mx = Math.max(mx, +mt[1]); });
+            let newStart;
+            if (milestones.length > 0) { const lastEnd = milestones.reduce((max, m) => m.endDate > max ? m.endDate : max, ""); let d = addDays(new Date(lastEnd), 1); while (isWeekend(d)) d = addDays(d, 1); newStart = fmt(d); }
+            else { newStart = firstDateStr; }
+            setEditingMilestone({ id: null, name: `M${mx + 1}`, startDate: newStart, endDate: fmt(addDays(new Date(newStart), 28)), status: "upcoming" }); setShowMilestoneModal(true);
+          }} style={btn(t.btnBg, t.btnFg)}><LuIcon name="flag" size={14} /> 마일스톤</button>
+          <button onClick={() => { setTeamModalMode("add"); setShowTeamModal(true); }} style={btn(t.btnBg, t.btnFg)}><LuIcon name="users" size={14} /> 팀 추가</button>
+        </>}
+        <div style={{ flex: 1 }} />
+        {tab === "schedule" && (
+          <div style={{ display: "flex", gap: 10, fontSize: 10, marginRight: 6, flexWrap: "wrap", alignItems: "center" }}>
+            {Object.entries(STATUS_COLORS).filter(([k]) => k !== "leave").map(([k, v]) => (
+              <span key={k} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                <LuIcon name={STATUS_ICON_MAP[k]} size={12} color={mode === "dark" ? v.bg : (v.borderLight || v.border)} />{v.label}
+              </span>
+            ))}
+            <span style={{ width: 1, height: 12, background: t.border, margin: "0 2px" }} />
+            {[{ icon: "palmtree", label: "연차" }, { icon: "sunrise", label: "오전반차" }, { icon: "sunset", label: "오후반차" }].map(lv => (
+              <span key={lv.label} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                <span style={{ width: 12, height: 12, background: `repeating-linear-gradient(45deg, ${mode === "dark" ? "rgba(80,150,180,0.20)" : "rgba(9,105,218,0.08)"}, ${mode === "dark" ? "rgba(80,150,180,0.20)" : "rgba(9,105,218,0.08)"} 2px, ${mode === "dark" ? "rgba(80,150,180,0.50)" : "rgba(9,105,218,0.2)"} 2px, ${mode === "dark" ? "rgba(80,150,180,0.50)" : "rgba(9,105,218,0.2)"} 3.5px)`, border: `1.5px dashed ${mode === "dark" ? "#6a9ab0" : "#0969da"}`, borderRadius: 2 }} />
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><LuIcon name={lv.icon} size={11} /> {lv.label}</span>
+              </span>
+            ))}
+          </div>
+        )}
+        {tab === "schedule" && <button onClick={scrollToToday} style={{ ...btn(t.btnBg, t.btnFg), padding: "3px 10px", fontSize: 11, fontWeight: 700, border: `1px solid ${t.btnBg}` }}><LuIcon name="calendarCheck" size={14} /> 오늘</button>}
+        {tab === "schedule" && <div style={{ display: "flex", alignItems: "center", gap: 3, marginRight: 4 }}>
+          <button onClick={() => setZoomIdx(p => Math.max(0, p - 1))} disabled={zoomIdx === 0} title="축소" style={{ ...btn(t.border, t.text), padding: "3px 8px", fontSize: 11, border: `1px solid ${t.border}`, opacity: zoomIdx === 0 ? .3 : 1 }}><LuIcon name="minus" size={12} /></button>
+          <span style={{ fontSize: 10, color: t.textDim, minWidth: 20, textAlign: "center" }}>{zoom.label}</span>
+          <button onClick={() => setZoomIdx(p => Math.min(ZOOM_LEVELS.length - 1, p + 1))} disabled={zoomIdx === ZOOM_LEVELS.length - 1} title="확대" style={{ ...btn(t.border, t.text), padding: "3px 8px", fontSize: 11, border: `1px solid ${t.border}`, opacity: zoomIdx === ZOOM_LEVELS.length - 1 ? .3 : 1 }}><LuIcon name="plus" size={12} /></button>
+        </div>}
+        {tab === "schedule" && <div style={{ display: "flex", alignItems: "center", position: "relative", marginRight: 4 }}>
+          <span style={{ position: "absolute", left: 7, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", opacity: .5, display: "flex" }}><LuIcon name="search" size={13} /></span>
+          <input ref={searchRef} value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+            onKeyDown={e => { if (e.key === "Escape") { setSearchQuery(""); e.target.blur(); } }}
+            placeholder="검색" style={{ width: 130, padding: "4px 24px 4px 26px", background: t.inputBg, border: `1px solid ${searchQuery ? t.accent : t.inputBorder}`, color: t.text, borderRadius: 5, fontSize: 11, outline: "none" }} />
+          {searchQuery && <button onClick={() => { setSearchQuery(""); searchRef.current?.focus(); }}
+            style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: t.textDim, cursor: "pointer", padding: "0 2px", lineHeight: 1, display: "flex" }}><LuIcon name="x" size={12} /></button>}
+        </div>}
+        <button onClick={() => setMode((p) => p === "dark" ? "light" : "dark")} title={mode === "dark" ? "라이트 모드" : "다크 모드"}
+          style={{ ...btn(mode === "dark" ? "#222430" : "#f0f3f6"), color: mode === "dark" ? "#c4c8d0" : "#656d76", padding: "4px 10px", borderRadius: 20, border: `1px solid ${t.border}` }}>
+          <LuIcon name={mode === "dark" ? "sun" : "moon"} size={16} />
+        </button>
+        <button onClick={undo} disabled={undoStack.current.length === 0} title="실행취소 (Ctrl+Z)" style={{ ...btn(t.border, t.text), padding: "3px 10px", border: `1px solid ${t.border}`, opacity: undoStack.current.length === 0 ? .3 : 1 }}><LuIcon name="undo2" size={14} /></button>
+        <button onClick={() => setShowHistory(p => !p)} style={{ ...btn(showHistory ? t.btnBg : t.border, showHistory ? t.btnFg : t.text), padding: "3px 10px", fontSize: 10, border: `1px solid ${showHistory ? t.btnBg : t.border}` }}><LuIcon name="history" size={14} /> 기록 {changeLog.length > 0 ? `(${changeLog.length})` : ""}</button>
+      </div>
+
+      {/* ─── 메인 + 히스토리 래퍼 ─── */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+      {/* ─── 아트 스케줄 탭 ─── */}
+      {tab === "schedule" && (
+        <div style={{ flex: 1, display: "flex", overflow: "hidden" }} onMouseUp={handleCellMouseUp}>
+          {/* 좌측 패널 */}
+          <div style={{ width: leftW, flexShrink: 0, borderRight: `2px solid ${t.border}`, display: "flex", flexDirection: "column", background: t.panelBg, position: "relative" }}>
+            <div style={{ height: 70, borderBottom: `2px solid ${t.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: t.accent, background: t.headerBg }}>팀 / 담당자</div>
+            <div style={{ height: 26, borderBottom: `1px solid ${t.border}`, display: "flex", alignItems: "center", paddingLeft: 8, fontSize: 10, color: t.textDim, background: t.headerBg }}>마일스톤</div>
+            <div ref={leftBodyRef} style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }} onScroll={() => syncScroll("left")}>
+              {teamSections.map(({ team, idx: tIdx }) => {
+                const isDragOver = teamDragOverIdx === tIdx && teamDragIdx !== tIdx;
+                const collapsed = collapsedTeams.includes(team.id);
+                const membersList = team.members.length > 0 ? (collapsed ? [team.members[0]] : team.members) : [null];
+                return (
+                  <div key={team.id} draggable onDragStart={(e) => handleTeamDragStart(e, tIdx)} onDragOver={(e) => handleTeamDragOver(e, tIdx)} onDrop={() => handleTeamDrop(tIdx)} onDragEnd={handleTeamDragEnd}
+                    style={{ borderTop: isDragOver ? `3px solid ${t.teamDragBorder}` : `1.5px solid ${t.border}`, background: isDragOver ? t.teamDragBg : "transparent", transition: "background .15s" }}>
+                    {membersList.map((member, mIdx) => {
+                      const isLeader = mIdx === 0 && member;
+                      const isMemberDragOver = memberDragOver && memberDragOver.teamId === team.id && memberDragOver.mIdx === mIdx && memberDrag && memberDrag.mIdx !== mIdx;
+                      return (
+                      <div key={member ? member.id : "__empty"}
+                        draggable={!!member && !isLeader && !collapsed} onDragStart={(e) => member && !collapsed ? handleMemberDragStart(e, team.id, mIdx) : null} onDragOver={(e) => member && !collapsed ? handleMemberDragOver(e, team.id, mIdx) : null} onDrop={(e) => member && !collapsed ? handleMemberDrop(e, team.id, mIdx) : null} onDragEnd={handleMemberDragEnd}
+                        style={{ height: CELL_H, display: "flex", alignItems: "center", borderBottom: `1px solid ${t.border}55`, borderTop: isMemberDragOver ? `2px solid ${t.accent}` : "none" }}>
+                        {mIdx === 0 ? (
+                          <div style={{ width: teamW, flexShrink: 0, fontWeight: 700, fontSize: zoom.teamFont, color: t.accent, display: "flex", alignItems: "center", paddingLeft: 2, gap: 1, cursor: "grab" }} title="드래그하여 팀 순서 변경">
+                            <span onClick={(e) => { e.stopPropagation(); toggleCollapse(team.id); }} style={{ cursor: "pointer", marginRight: 1, opacity: .6, userSelect: "none", width: 12, textAlign: "center", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><LuIcon name={collapsed ? "chevronRight" : "chevronDown"} size={10} sw={2} /></span>
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{team.name}{collapsed ? ` (${team.members.length})` : ""}</span>
+                          </div>
+                        ) : <div style={{ width: teamW, flexShrink: 0 }} />}
+                        <span onClick={(e) => { if (member) { e.stopPropagation(); hideTooltip(); setEditingMember({ teamId: team.id, memberId: member.id }); } }}
+                          onMouseEnter={(e) => member && showTooltip(e, { name: member.name, team: team.name, email: member.email || "", roles: member.roles || [member.role || "사원"], concurrent: member.concurrent })}
+                          onMouseLeave={hideTooltip}
+                          style={{ flex: 1, fontSize: zoom.nameFont, paddingLeft: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: member && searchMatch && searchMatch.memberIds.has(member.id) ? t.accent : member ? t.text : t.textDim, fontStyle: member ? "normal" : "italic", cursor: member ? "pointer" : "default", fontWeight: member && searchMatch && searchMatch.memberIds.has(member.id) ? 700 : member && (member.role === "팀장" || member.role === "실장" || member.role === "부팀장") ? 700 : 400, minWidth: 0 }}>
+                          {member ? member.name : ""}{member && (() => { const rs = member.concurrent && member.roles ? member.roles : [member.role || "사원"]; const display = rs.filter(r => r !== "사원"); return display.length > 0 ? <span style={{ fontSize: 9, color: display.some(r => r === "팀장" || r === "실장") ? t.accent : t.textDim, fontWeight: 400, marginLeft: 3 }}>{display.join("/")}</span> : ""; })()}
+                        </span>
+                        {mIdx === 0 && (
+                          <div style={{ display: "flex", flexShrink: 0 }}>
+                            <button onClick={() => { setTargetTeamId(team.id); setShowMemberModal(true); }} title="인원 추가" style={iconBtn(t.accent)}><LuIcon name="userPlus" size={14} /></button>
+                            <button onClick={() => { setEditingTeam(team); setTeamModalMode("edit"); setShowTeamModal(true); }} title="팀 설정" style={iconBtn(t.textDim)}><LuIcon name="settings" size={14} /></button>
+                          </div>
+                        )}
+                        {member && !isLeader && <button onClick={() => removeMember(team.id, member.id)} title="제거" style={{ ...iconBtn(t.accentAlt), opacity: .4 }}><LuIcon name="x" size={12} /></button>}
+                      </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+            <div onMouseDown={handleResizeStart} style={{ position: "absolute", top: 0, right: -3, width: 6, height: "100%", cursor: "col-resize", zIndex: 10 }}
+              onMouseOver={(e) => e.currentTarget.style.background = t.accent + "44"} onMouseOut={(e) => e.currentTarget.style.background = "transparent"} />
+          </div>
+
+          {/* 캘린더 그리드 */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ flexShrink: 0, overflowX: "auto", overflowY: "hidden" }} id="hdr-scroll" onScroll={() => syncScroll("header")}>
+              <div style={{ width: dates.length * CELL_W, position: "relative" }}>
+                {dates.map((d, i) => d.getDay() === 1 && i > 0 ? <div key={"wh"+i} style={{ position: "absolute", left: i * CELL_W - 1, top: 22, width: 2, bottom: 0, background: mode === "dark" ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.15)", pointerEvents: "none", zIndex: 15 }} /> : null)}
+                <div style={{ height: 22, display: "flex", background: t.headerBg }}>
+                  {monthGroups.map((g, i) => <div key={i} style={{ width: g.count * CELL_W, borderRight: `1px solid ${t.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700 }}>{g.year}년 {g.month}월</div>)}
+                </div>
+                <div style={{ height: 24, display: "flex", position: "relative" }} onClick={(e) => e.stopPropagation()}>
+                  {dates.map((d, i) => { const hol = getHoliday(d); const isToday = fmt(d) === todayStr; const isSel = headerSelect && headerSelect.startIdx !== headerSelect.endIdx && i >= Math.min(headerSelect.startIdx, headerSelect.endIdx) && i <= Math.max(headerSelect.startIdx, headerSelect.endIdx); return <div key={i} title={hol || "클릭: 휴무일 지정 / 드래그: 날짜 숨기기"}
+                    onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setHeaderSelect({ startIdx: i, endIdx: i, dragging: true }); }}
+                    onMouseEnter={() => { if (headerSelect?.dragging) setHeaderSelect(p => ({ ...p, endIdx: i })); }}
+                    style={{ width: CELL_W, textAlign: "center", fontSize: 10, lineHeight: "24px", color: isSel ? "#fff" : isToday ? t.accent : hol ? t.holidayText : t.textDim, background: isSel ? t.accent : isToday ? (mode === "dark" ? "rgba(120,137,168,0.15)" : "rgba(74,85,224,0.1)") : hol ? t.holidayBg : t.headerBg, borderRight: `1px solid ${t.border}`, fontWeight: isToday || hol ? 700 : 400, cursor: "pointer", userSelect: "none" }}>{dayNames[d.getDay()]}</div>; })}
+                  {headerSelect && !headerSelect.dragging && headerSelect.startIdx !== headerSelect.endIdx && (() => { const lo = Math.min(headerSelect.startIdx, headerSelect.endIdx); const hi = Math.max(headerSelect.startIdx, headerSelect.endIdx); const cnt = hi - lo + 1; const cx = ((lo + hi + 1) / 2) * CELL_W; return (
+                    <div onClick={(e) => e.stopPropagation()} style={{ position: "absolute", left: Math.max(0, cx - 70), top: 26, zIndex: 100, display: "flex", alignItems: "center", gap: 6, background: t.panelBg, border: `1px solid ${t.border}`, borderRadius: 8, padding: "3px 10px", boxShadow: `0 4px 16px ${t.shadowColor}` }}>
+                      <span style={{ fontSize: 11, color: t.text, fontWeight: 600 }}>{cnt}일</span>
+                      <button onClick={hideSelectedDates} style={{ ...btn(t.btnBg, t.btnFg), fontSize: 10, padding: "3px 10px" }}><LuIcon name="eyeOff" size={12} /> 숨기기</button>
+                      <button onClick={() => setHeaderSelect(null)} style={{ ...btn(t.border, t.text), fontSize: 10, padding: "3px 8px", border: `1px solid ${t.border}` }}>취소</button>
+                    </div>); })()}
+                  {hiddenGaps.map((gap, gi) => <div key={`dg${gi}`} onClick={(e) => { e.stopPropagation(); unhideGap(gap.afterIdx); }} style={{ position: "absolute", left: gap.pos - 8, top: 2, width: 16, height: 20, background: t.accentAlt, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, color: "#fff", fontWeight: 700, cursor: "pointer", zIndex: 20, boxShadow: `0 1px 4px ${t.shadowColor}` }} title={`${gap.count}일 숨김 - 클릭하여 표시`}>{gap.count}</div>)}
+                </div>
+                <div style={{ height: 24, display: "flex", borderBottom: `2px solid ${t.border}`, position: "relative" }}>
+                  {dates.map((d, i) => { const hol = getHoliday(d); const isCustom = customHolidays.includes(fmt(d)); const isToday = fmt(d) === todayStr; const isSel = headerSelect && headerSelect.startIdx !== headerSelect.endIdx && i >= Math.min(headerSelect.startIdx, headerSelect.endIdx) && i <= Math.max(headerSelect.startIdx, headerSelect.endIdx); return <div key={i} title={hol || "클릭하여 휴무일 지정"} onClick={(e) => { e.stopPropagation(); setHeaderSelect(null); toggleCustomHoliday(d); }} style={{ width: CELL_W, textAlign: "center", fontSize: 11, lineHeight: "24px", color: isSel ? "#fff" : isToday ? "#fff" : hol ? t.holidayText : t.text, background: isSel ? t.accent + "88" : hol ? t.holidayBg : t.headerBg, borderRight: `1px solid ${t.border}`, fontWeight: isToday ? 800 : hol ? 700 : 600, cursor: KOREAN_HOLIDAYS[fmt(d)] ? "default" : "pointer", borderBottom: isCustom ? `2px solid ${t.accentAlt}` : "none", position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>{isToday ? <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 20, height: 20, borderRadius: "50%", background: "#a05560", color: "#fff", fontSize: 11, fontWeight: 800, lineHeight: 1 }}>{d.getDate()}</span> : d.getDate()}</div>; })}
+                  {hiddenGaps.map((gap, gi) => <div key={`ng${gi}`} onClick={(e) => { e.stopPropagation(); unhideGap(gap.afterIdx); }} style={{ position: "absolute", left: gap.pos - 8, top: 2, width: 16, height: 20, background: t.accentAlt, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, color: "#fff", fontWeight: 700, cursor: "pointer", zIndex: 20, opacity: 0.7 }} title={`${gap.count}일 숨김 - 클릭하여 표시`}>{gap.count}</div>)}
+                </div>
+                <div style={{ height: 26, position: "relative", borderBottom: `1px solid ${t.border}`, width: dates.length * CELL_W, backgroundImage: `repeating-linear-gradient(to right, transparent, transparent ${CELL_W - 1}px, ${t.border}22 ${CELL_W - 1}px, ${t.border}22 ${CELL_W}px)` }}>
+                  {(() => { const ti = dateToCol(todayStr); return ti >= 0 ? <div style={{ position: "absolute", left: ti * CELL_W + Math.floor(CELL_W / 2) - 1, top: 0, width: 0, height: 26, borderLeft: "2px dashed #a05560", opacity: 0.45, pointerEvents: "none", zIndex: 2 }} /> : null; })()}
+                  {milestonePositions.map((ms) => {
+                    const mst = MILESTONE_STATUS[ms.status] || MILESTONE_STATUS.upcoming;
+                    const msGrad = mode === "dark" ? mst.grad : mst.gradLight;
+                    return (
+                      <div key={ms.id} onClick={() => { setEditingMilestone(ms); setShowMilestoneModal(true); }}
+                        style={{ position: "absolute", top: 3, left: ms.sCol * CELL_W + 2, width: (ms.eCol - ms.sCol + 1) * CELL_W - 4, height: 20, background: msGrad, borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: mode === "dark" ? "#c0c4cc" : "#fff", cursor: "pointer", boxShadow: `0 2px 8px ${t.shadowColor}`, letterSpacing: 1 }}>{ms.name}</div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            <div style={{ flex: 1, overflow: "auto" }} ref={gridRef} onScroll={() => syncScroll("grid")}>
+              <div style={{ width: dates.length * CELL_W, height: totalRows * CELL_H, position: "relative" }}>
+                {holidayIndices.map(i => <div key={"hc" + i} style={{ position: "absolute", left: i * CELL_W, top: 0, width: CELL_W, height: totalRows * CELL_H, background: t.holidayBg, pointerEvents: "none" }} />)}
+                {(() => { const ti = dateToCol(todayStr); return ti >= 0 ? <div style={{ position: "absolute", left: ti * CELL_W + Math.floor(CELL_W / 2) - 1, top: 0, width: 0, height: totalRows * CELL_H, borderLeft: "2px dashed #a05560", opacity: 0.45, pointerEvents: "none", zIndex: 4 }} /> : null; })()}
+                {hiddenGaps.map((gap, gi) => <div key={`gg${gi}`} style={{ position: "absolute", left: gap.pos - 1, top: 0, width: 2, height: totalRows * CELL_H, background: t.accentAlt, pointerEvents: "none", zIndex: 4, opacity: 0.4 }} />)}
+                {dates.map((d, i) => d.getDay() === 1 && i > 0 ? <div key={"wg"+i} style={{ position: "absolute", left: i * CELL_W - 1, top: 0, width: 2, height: totalRows * CELL_H, background: mode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.1)", pointerEvents: "none", zIndex: 3 }} /> : null)}
+                {flatRows.map((row, rIdx) => {
+                  const isTeamFirst = rIdx === 0 || flatRows[rIdx - 1].teamId !== row.teamId;
+                  const dragSel = dragState && dragState.memberId === row.memberId;
+                  const ds = dragSel ? Math.min(dragState.startIdx, dragState.endIdx) : 0;
+                  const de = dragSel ? Math.max(dragState.startIdx, dragState.endIdx) : 0;
+                  return (
+                    <div key={row.memberId + rIdx} onDragOver={(e) => handleRowDragOver(e, row.memberId)} onDragLeave={() => { if (dragOverMemberId === row.memberId) setDragOverMemberId(null); }} onDrop={(e) => handleRowDrop(e, row.memberId)}
+                      onMouseDown={(e) => { const ci = Math.floor((e.nativeEvent.offsetX || (e.clientX - e.currentTarget.getBoundingClientRect().left)) / CELL_W); if (e.target === e.currentTarget && ci >= 0 && ci < dates.length) handleCellMouseDown(row.memberId, ci); }}
+                      onMouseMove={(e) => { if (dragState && dragState.memberId === row.memberId) { const ci = Math.floor((e.clientX - e.currentTarget.getBoundingClientRect().left) / CELL_W); if (ci >= 0 && ci < dates.length) handleCellMouseEnter(row.memberId, ci); } }}
+                      style={{ position: "absolute", left: 0, top: rIdx * CELL_H, width: dates.length * CELL_W, height: CELL_H, borderBottom: `1px solid ${t.border}44`, borderTop: isTeamFirst ? `1.5px solid ${t.border}` : "none", background: dragOverMemberId === row.memberId && !row.isEmpty ? t.dragBg : "transparent", cursor: row.isEmpty ? "default" : "crosshair", backgroundImage: `repeating-linear-gradient(to right, transparent, transparent ${CELL_W - 1}px, ${t.border}18 ${CELL_W - 1}px, ${t.border}18 ${CELL_W}px)` }}>
+                      {dragSel ? <div style={{ position: "absolute", left: ds * CELL_W, top: 0, width: (de - ds + 1) * CELL_W, height: CELL_H, background: t.dragBg, pointerEvents: "none" }} /> : null}
+                    </div>
+                  );
+                })}
+                {tasks.filter(tk => tk.status !== "leave").map((task) => {
+                  const rIdx = memberRowMap.get(task.memberId); if (rIdx === undefined) return null;
+                  const sCol = dateToCol(task.startDate), eCol = dateToCol(task.endDate);
+                  if (sCol < 0 && eCol < 0) return null;
+                  const aS = Math.max(sCol, 0), aE = Math.min(eCol, dates.length - 1); if (aS > aE) return null;
+                  const sc = STATUS_COLORS[task.status] || STATUS_COLORS.planned;
+                  const taskBg = mode === "dark" ? sc.bg : sc.bgLight;
+                  const taskBorder = mode === "dark" ? sc.border : (sc.borderLight || sc.border);
+                  return (
+                    <div key={task.id} draggable onDragStart={(e) => handleTaskDragStart(e, task.id)} onDragEnd={handleTaskDragEnd}
+                      onClick={() => { if (!draggingTaskId) { setEditingTask(task); setShowTaskModal(true); } }}
+                      onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, task }); }}
+                      style={{ position: "absolute", left: aS * CELL_W + 1, top: rIdx * CELL_H + 4, width: (aE - aS + 1) * CELL_W - 2, height: CELL_H - 8, background: taskBg, border: `1.5px solid ${taskBorder}`, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "flex-start", fontSize: 10, fontWeight: 600, color: mode === "dark" ? (sc.text || "#c4c8d0") : taskBorder, cursor: "grab", overflow: "visible", whiteSpace: "nowrap", padding: "0 5px", boxShadow: `0 1px 4px ${t.shadowColor}`, zIndex: 10, opacity: draggingTaskId === task.id ? 0.5 : searchMatch && !searchMatch.taskIds.has(task.id) ? 0.15 : 1, transition: "opacity .15s" }}
+                      title={`${task.title}\n${task.startDate} ~ ${task.endDate}\n${sc.label}`}>{task.title}
+                    </div>
+                  );
+                })}
+                {tasks.filter(tk => tk.status === "leave").map((task) => {
+                  const rIdx = memberRowMap.get(task.memberId); if (rIdx === undefined) return null;
+                  const sCol = dateToCol(task.startDate), eCol = dateToCol(task.endDate);
+                  if (sCol < 0 && eCol < 0) return null;
+                  const aS = Math.max(sCol, 0), aE = Math.min(eCol, dates.length - 1); if (aS > aE) return null;
+                  const li = getLeaveInfo(task.title);
+                  const halfH = Math.floor((CELL_H - 4) / 2);
+                  const isFull = li.type === "full";
+                  const isAM = li.type === "am";
+                  const leaveTop = isFull ? rIdx * CELL_H + 2 : isAM ? rIdx * CELL_H + 2 : rIdx * CELL_H + 2 + halfH;
+                  const leaveH = isFull ? CELL_H - 4 : halfH;
+                  const hatchStripe = mode === "dark" ? "rgba(80,150,180,0.50)" : "rgba(9,105,218,0.2)";
+                  const hatchBase = mode === "dark" ? "rgba(80,150,180,0.20)" : "rgba(9,105,218,0.06)";
+                  const barW = (aE - aS + 1) * CELL_W - 2;
+                  const showText = barW > 45;
+                  return (
+                    <div key={task.id} draggable onDragStart={(e) => handleTaskDragStart(e, task.id)} onDragEnd={handleTaskDragEnd}
+                      onClick={() => { if (!draggingTaskId) { setEditingTask(task); setShowTaskModal(true); } }}
+                      onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, task }); }}
+                      style={{ position: "absolute", left: aS * CELL_W + 1, top: leaveTop, width: barW, height: leaveH,
+                        background: `repeating-linear-gradient(45deg, ${hatchBase}, ${hatchBase} 3px, ${hatchStripe} 3px, ${hatchStripe} 5px)`,
+                        border: `1.5px dashed ${mode === "dark" ? "#6a9ab0" : "#0969da"}`, borderRadius: 3, display: "flex", alignItems: "center", justifyContent: "center", gap: 2,
+                        fontSize: isFull ? 10 : 9, fontWeight: 700, color: mode === "dark" ? "#a0d4e8" : "#0969da",
+                        cursor: "grab", overflow: "hidden", whiteSpace: "nowrap", padding: "0 3px",
+                        zIndex: 20,
+                        opacity: draggingTaskId === task.id ? 0.5 : searchMatch && !searchMatch.taskIds.has(task.id) ? 0.15 : 1, transition: "opacity .15s" }}
+                      title={`${task.title}\n${task.startDate} ~ ${task.endDate}`}>
+                      <LuIcon name={li.icon} size={isFull ? 11 : 9} sw={2} />{showText ? task.title : ""}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── 업데이트 일정 탭 ─── */}
+      {tab === "updates" && (() => {
+        const flat = visibleThursdaysByMonth.flatMap(g => g.dates.map(d => fmt(d)));
+        const selSet = (() => {
+          if (!updateSelect) return new Set();
+          const si = flat.indexOf(updateSelect.start), ei = flat.indexOf(updateSelect.end);
+          if (si < 0 || ei < 0 || si === ei) return new Set();
+          return new Set(flat.slice(Math.min(si, ei), Math.max(si, ei) + 1));
+        })();
+        const openPopup = (ds) => { if (selSet.size === 0 && !dragItem) setEditingUpdate(ds); };
+        const cellPad = updateWide ? "12px 10px" : "8px 8px";
+        const cellPadEmpty = updateWide ? "4px 10px" : "3px 8px";
+        const rowFs = updateWide ? 13 : 12;
+        // D-day 셀 렌더러 — colType: "art"|"first"|"last", hasItems: 행에 항목 있는지
+        const deadlineLeftColor = { art: "#4a7058", first: "#7889a8", last: "#7e6e98" };
+        const deadlineBgColor = { art: mode === "dark" ? "rgba(74,112,88,0.08)" : "rgba(74,112,88,0.05)", first: mode === "dark" ? "rgba(120,137,168,0.06)" : "rgba(120,137,168,0.04)", last: mode === "dark" ? "rgba(126,110,152,0.06)" : "rgba(126,110,152,0.04)" };
+        const ddayColorCell = (diff) => {
+          if (diff === null || diff === undefined) return {};
+          if (diff < 0) return { color: "#586070", textDecoration: "line-through" };
+          if (diff === 0) return { color: mode === "dark" ? "#e8d0d3" : "#fff", background: "#a05560", borderRadius: 4, padding: "1px 5px", fontWeight: 700 };
+          if (diff <= 6) return { color: "#a05560", fontWeight: 700 };
+          if (diff <= 13) return { color: "#9e8548" };
+          return { color: mode === "dark" ? "#b0b4be" : "#586070" };
+        };
+        const renderDdayCell = (dateStr, opts = {}) => {
+          const { noBorderRight, colType = "art", hasItems = false } = opts;
+          const dd = calcDday(dateStr);
+          const ddStyle = ddayColorCell(dd);
+          const isDday = dd === 0;
+          const leftBorder = dateStr ? `3px solid ${deadlineLeftColor[colType]}` : "none";
+          const bgColor = dateStr ? deadlineBgColor[colType] : "transparent";
+          return (
+            <td style={{ ...tdS(t), padding: cellPad, fontWeight: dateStr ? 600 : 400, borderRight: noBorderRight ? "none" : `1.5px solid ${t.border}`, borderLeft: leftBorder, background: bgColor }}>
+              {dateStr ? (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                  <span>{fmtDateKR(dateStr)}</span>
+                  <span style={{ fontSize: 9, lineHeight: 1, ...ddStyle, ...(isDday ? { animation: "ddayPulse 1.5s ease-in-out infinite", display: "inline-block" } : {}) }}>{fmtDday(dd)}</span>
+                </div>
+              ) : (colType === "art" && hasItems) ? (
+                <span style={{ color: mode === "dark" ? "#3c3f4e" : "#8c959f", fontSize: 10, fontStyle: "italic" }}>미정</span>
+              ) : null}
+            </td>
+          );
+        };
+        // 마감 임박 경고 수집
+        const urgentAlerts = [];
+        visibleThursdaysByMonth.forEach(group => {
+          group.dates.forEach(date => {
+            const ds = fmt(date);
+            const entry = updateData[ds] || {};
+            const msName = entry.milestone || "";
+            const msMatch = msName ? milestones.find(m => m.name === msName) : null;
+            const artDl = msMatch ? msMatch.endDate : "";
+            const checks = [
+              { label: msName ? `${msName} 아트 마감` : "아트 마감", dateStr: artDl },
+              { label: msName ? `${msName} 1차 통머지` : "1차 통머지", dateStr: entry.firstMerge },
+              { label: msName ? `${msName} 마지막 통머지` : "마지막 통머지", dateStr: entry.lastMerge },
+            ];
+            checks.forEach(({ label, dateStr }) => {
+              if (!dateStr) return;
+              const dd = calcDday(dateStr);
+              if (dd !== null && dd >= 0 && dd <= 7) urgentAlerts.push({ label, dateStr, dd });
+            });
+          });
+        });
+        urgentAlerts.sort((a, b) => a.dd - b.dd);
+        // 마감 입력 카운트
+        let artTotal = 0, artFilled = 0, firstTotal = 0, firstFilled = 0, lastTotal = 0, lastFilled = 0;
+        visibleThursdaysByMonth.forEach(g => g.dates.forEach(date => {
+          const ds = fmt(date);
+          const e = updateData[ds] || {};
+          const its = toArr(e.items);
+          const hasItems = its.length > 0 && !(its.length === 1 && its[0] === "-");
+          if (hasItems) {
+            artTotal++; firstTotal++; lastTotal++;
+            const msN = e.milestone || "";
+            const msM = msN ? milestones.find(m => m.name === msN) : null;
+            if (msM && msM.endDate) artFilled++;
+            if (e.firstMerge) firstFilled++;
+            if (e.lastMerge) lastFilled++;
+          }
+        }));
+        const dlCnt = { art: [artFilled, artTotal], first: [firstFilled, firstTotal], last: [lastFilled, lastTotal] };
+        const dlCntColor = (f, tt) => tt > 0 && f === tt ? "#4a7058" : t.textDim;
+        return (
+        <div style={{ flex: 1, overflow: "auto", padding: 16 }}
+          onMouseUp={() => { updateDragRef.current = null; }}>
+          {urgentAlerts.length > 0 && (
+            <div style={{ marginBottom: 10, padding: "8px 14px", background: mode === "dark" ? "rgba(160,85,96,0.12)" : "rgba(244,67,54,.08)", border: "1.5px solid #f44336", borderRadius: 8, display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+              {urgentAlerts.slice(0, 5).map((a, i) => (
+                <span key={i} style={{ fontSize: 12, fontWeight: 600, color: a.dd === 0 ? "#f44336" : a.dd <= 3 ? "#e53935" : "#ff9800" }}>
+                  <LuIcon name="alertTriangle" size={14} /> {a.label} {fmtDday(a.dd)} ({fmtDateKR(a.dateStr)})
+                </span>
+              ))}
+            </div>
+          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+            {!showPastUpdates && pastThursdayCount > 0 && <button onClick={togglePastUpdates} style={{ padding: "4px 12px", background: t.btnBg, border: "none", borderRadius: 6, color: t.btnFg, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>지나간 업데이트 일정 {pastThursdayCount}건 보기</button>}
+            {showPastUpdates && pastThursdayCount > 0 && <button onClick={togglePastUpdates} style={{ padding: "4px 12px", background: t.textDim, border: "none", borderRadius: 6, color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 5 }}><LuIcon name="eyeOff" size={14} /> 지나간 일정 숨기기</button>}
+            {hiddenUpdateDates.length > 0 && <button onClick={showHiddenUpdateRows} style={{ padding: "4px 12px", background: t.btnBg, border: "none", borderRadius: 6, color: t.btnFg, cursor: "pointer", fontSize: 12, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 5 }}><LuIcon name="eyeOff" size={14} /> 숨긴 {hiddenUpdateDates.length}건 복원</button>}
+            {selSet.size >= 2 && <button onClick={hideUpdateSelection} style={{ padding: "4px 12px", background: t.deleteBg, border: "none", borderRadius: 6, color: t.deleteFg, cursor: "pointer", fontSize: 12, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 5 }}><LuIcon name="eyeOff" size={14} /> 선택 숨기기 ({selSet.size}건)</button>}
+            {selSet.size >= 2 && <button onClick={() => setUpdateSelect(null)} style={{ padding: "4px 12px", background: "transparent", border: `1px solid ${t.border}`, borderRadius: 6, color: t.text, cursor: "pointer", fontSize: 12 }}>선택 해제</button>}
+            <select value={updateTeamFilter} onChange={(e) => setUpdateTeamFilter(e.target.value)} style={{ padding: "4px 10px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, borderRadius: 6, color: t.text, cursor: "pointer", fontSize: 11, fontWeight: 600, outline: "none" }}>
+              <option value="전체">팀 필터: 전체</option>
+              {TEAM_TAG_NAMES.map(tn => <option key={tn} value={tn}>{tn}</option>)}
+            </select>
+            <div style={{ flex: 1 }} />
+            <button onClick={() => setUpdateWide(p => !p)} style={{ padding: "4px 12px", background: updateWide ? t.btnBg : "transparent", border: `1px solid ${updateWide ? t.btnBg : t.border}`, borderRadius: 6, color: updateWide ? t.btnFg : t.text, cursor: "pointer", fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 5 }}><LuIcon name="maximize2" size={14} /> WIDE</button>
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: rowFs, tableLayout: "fixed", userSelect: "none", border: `1.5px solid ${t.border}` }}>
+            <colgroup>
+              {updateColWidths.map((w, i) => <col key={i} style={w > 0 ? { width: w } : {}} />)}
+            </colgroup>
+            <thead>
+              <tr style={{ background: t.headerBg, position: "sticky", top: 0, zIndex: 10 }}>
+                {[{t:"월"},{t:"업데이트"},{t:"항목"},{t:"미정"},{t:"아트 마감",ic:"palette",cnt:"art"},{t:"1차 통머지",ic:"gitMerge",cnt:"first"},{t:"마지막 통머지",ic:"rocket",cnt:"last"}].map((col, ci) => (
+                  <th key={ci} style={{ ...thS(t), borderRight: ci === 6 ? "none" : `1.5px solid ${t.border}` }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>{col.ic && <LuIcon name={col.ic} size={13} />}{col.t}{col.cnt && dlCnt[col.cnt][1] > 0 && <span style={{ fontSize: 10, fontWeight: 600, marginLeft: 2, color: dlCntColor(dlCnt[col.cnt][0], dlCnt[col.cnt][1]) }}>({dlCnt[col.cnt][0]}/{dlCnt[col.cnt][1]})</span>}</span>
+                    {ci < 6 && <div onMouseDown={(e) => startColResize(e, ci)} style={{ position: "absolute", right: -3, top: 0, bottom: 0, width: 6, cursor: "col-resize", zIndex: 2 }} onMouseOver={(e) => e.currentTarget.style.background = t.accent + "44"} onMouseOut={(e) => e.currentTarget.style.background = "transparent"} />}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {visibleThursdaysByMonth.map((group) => {
+                const mk = `${group.year}-${group.month}`;
+                const mPending = toArr(pendingByMonth[mk]);
+                const pendChipS = (isDrag) => ({ display: "block", padding: "3px 8px", margin: "2px 0", background: isDrag ? (mode === "dark" ? "#323544" : "#d0d7de") : (mode === "dark" ? "#222430" : "#f0f3f6"), border: `1px solid ${t.border}`, borderRadius: 4, cursor: "grab", fontSize: 11, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", opacity: isDrag ? 0.5 : 1 });
+                return group.dates.map((date, idx) => {
+                  const ds = fmt(date);
+                  const entry = updateData[ds] || {};
+                  const items = toArr(entry.items);
+                  const iTeams = entry.itemTeams || [];
+                  const isSel = selSet.has(ds);
+                  const msName = entry.milestone || "";
+                  const msMatch = msName ? milestones.find(m => m.name === msName) : null;
+                  const artDl = msMatch ? msMatch.endDate : "";
+                  const isDragOver = dragOverDate === ds;
+                  const isEmpty = items.length === 0 || (items.length === 1 && items[0] === "-");
+                  const emptyBg = mode === "dark" ? "#1e2029" : "#f6f8fa";
+                  const chipS = (isDrag) => ({ display: "flex", alignItems: "center", gap: 8, padding: "3px 8px", margin: "2px 0", background: isDrag ? (mode === "dark" ? "#323544" : "#d0d7de") : (mode === "dark" ? "#222430" : "#f0f3f6"), border: `1px solid ${t.border}`, borderRadius: 4, cursor: "grab", fontSize: 11, overflow: "hidden", opacity: isDrag ? 0.5 : 1 });
+                  const hasTeamMatch = (teamArr) => updateTeamFilter === "전체" || (teamArr && teamArr.some(tn => tn === updateTeamFilter || (updateTeamFilter === "배경_제작" && tn.startsWith("배경_제작"))));
+                  const filteredIdxs = items.map((_, i) => i).filter(i => {
+                    if (items[i] === "-") return updateTeamFilter === "전체";
+                    return hasTeamMatch(iTeams[i]);
+                  });
+                  // 아트 마감 임박 행 하이라이트
+                  const artDdayVal = calcDday(artDl);
+                  const artUrgent = artDdayVal !== null && artDdayVal >= 0 && artDdayVal <= 7;
+                  const urgentRowBg = artUrgent ? (mode === "dark" ? "rgba(160,85,96,0.04)" : "rgba(160,85,96,0.03)") : null;
+                  const baseBg = isEmpty ? emptyBg : idx % 2 === 0 ? t.tableBg : t.tableAlt;
+                  const rowBg = isDragOver ? (mode === "dark" ? "rgba(120,137,168,0.10)" : "rgba(9,105,218,.08)") : isSel ? (mode === "dark" ? "rgba(120,137,168,0.12)" : "rgba(9,105,218,.1)") : urgentRowBg || baseBg;
+                  const normalBg = urgentRowBg || baseBg;
+                  // 항목 개수 배지
+                  const itemCount = filteredIdxs.filter(i => items[i] && items[i] !== "-").length;
+                  const badgeBg = itemCount === 0 ? "transparent" : itemCount <= 2 ? (mode === "dark" ? "#586070" : "#8c959f") : itemCount <= 4 ? (mode === "dark" ? "#9e8548" : "#9a6700") : (mode === "dark" ? "#a05560" : "#cf222e");
+                  const badgeFg = itemCount >= 3 ? "#fff" : (mode === "dark" ? "#c4c8d0" : "#fff");
+                  return (
+                    <tr key={ds}
+                      onDragOver={(e) => { if (dragItem) { e.preventDefault(); setDragOverDate(ds); } }}
+                      onDragLeave={() => { if (dragOverDate === ds) setDragOverDate(null); }}
+                      onDrop={(e) => { e.preventDefault(); if (dragItem) { const toKey = dragItem.field === "pending" ? mk : ds; if (dragItem.fromDate !== toKey) moveItem(dragItem.fromDate, toKey, dragItem.field, dragItem.index); } setDragItem(null); setDragOverDate(null); }}
+                      onMouseDown={(e) => { if (e.button === 0 && !e.target.closest("[draggable]")) { updateDragRef.current = ds; setUpdateSelect(null); } }}
+                      onMouseEnter={() => { if (updateDragRef.current && updateDragRef.current !== ds) setUpdateSelect({ start: updateDragRef.current, end: ds }); }}
+                      onClick={() => openPopup(ds)}
+                      style={{
+                        background: rowBg,
+                        boxShadow: artUrgent ? "inset 3px 0 0 #a05560" : "none",
+                        cursor: "pointer", transition: "background 0.1s"
+                      }}
+                      title={isEmpty ? "항목 없음" : ""}
+                      onMouseOver={(e) => { if (!isSel && !isDragOver && !updateDragRef.current && !dragItem) e.currentTarget.style.background = t.tableHover; }} onMouseOut={(e) => { if (!isSel && !isDragOver) e.currentTarget.style.background = normalBg; }}>
+                      {idx === 0 && <td rowSpan={group.dates.length} style={{ ...tdS(t), padding: cellPad, fontWeight: 700, verticalAlign: "top" }}>{group.month}월</td>}
+                      <td style={{ ...tdS(t), padding: isEmpty ? cellPadEmpty : cellPad, fontWeight: 600, whiteSpace: "nowrap" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                          <span>{date.getDate()}일</span>
+                          {itemCount > 0 && <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: "50%", background: badgeBg, color: badgeFg, fontSize: 10, fontWeight: 700, lineHeight: 1, flexShrink: 0 }}>{itemCount}</span>}
+                        </div>
+                        {msName ? <span style={{ fontSize: 10, opacity: 0.7, display: "block" }}>({msName})</span> : ""}
+                      </td>
+                      <td style={{ ...tdS(t), padding: isEmpty ? cellPadEmpty : cellPad, textAlign: "left" }}>
+                        {isEmpty ? null : filteredIdxs.map((i) => {
+                          const it = items[i];
+                          const teams = iTeams[i] || [];
+                          return (
+                          <span key={i} draggable
+                            onDragStart={(e) => { e.stopPropagation(); setDragItem({ fromDate: ds, index: i, field: "items" }); e.dataTransfer.effectAllowed = "move"; }}
+                            onDragEnd={() => { setDragItem(null); setDragOverDate(null); }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => { e.stopPropagation(); setEditingUpdate(ds); }}
+                            style={chipS(dragItem && dragItem.fromDate === ds && dragItem.field === "items" && dragItem.index === i)}
+                          ><span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it}</span>{teams.map(tn => { const tc = TEAM_TAG_COLORS[tn] || TEAM_TAG_COLORS[(Object.keys(TEAM_TAG_COLORS).find(k => tn.startsWith(k)))] || TEAM_TAG_COLORS["공통"]; const c = tc[mode] || tc.dark; return <span key={tn} style={{ padding: "2px 8px", fontSize: 10, borderRadius: 10, border: `1px solid ${c.border}`, background: c.bg, color: c.color, whiteSpace: "nowrap", flexShrink: 0 }}>{tn}</span>; })}</span>
+                          );
+                        })}
+                      </td>
+                      {idx === 0 && <td rowSpan={group.dates.length} style={{ ...tdS(t), padding: cellPad, textAlign: "left", verticalAlign: "top" }}
+                        onDragOver={(e) => { if (dragItem && dragItem.field === "pending") { e.preventDefault(); e.stopPropagation(); } }}
+                        onDrop={(e) => { if (dragItem && dragItem.field === "pending" && dragItem.fromDate !== mk) { e.preventDefault(); e.stopPropagation(); moveItem(dragItem.fromDate, mk, "pending", dragItem.index); setDragItem(null); setDragOverDate(null); } }}>
+                        {mPending.length > 0 ? mPending.map((it, i) => (
+                          <span key={i} draggable
+                            onDragStart={(e) => { e.stopPropagation(); setDragItem({ fromDate: mk, index: i, field: "pending" }); e.dataTransfer.effectAllowed = "move"; }}
+                            onDragEnd={() => { setDragItem(null); setDragOverDate(null); }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => { e.stopPropagation(); setEditingUpdate(ds); }}
+                            style={pendChipS(dragItem && dragItem.fromDate === mk && dragItem.field === "pending" && dragItem.index === i)}
+                          >{it}</span>
+                        )) : <span style={{ color: t.textDim }}>-</span>}
+                      </td>}
+                      {renderDdayCell(artDl, { colType: "art", hasItems: !isEmpty })}
+                      {renderDdayCell(entry.firstMerge, { colType: "first" })}
+                      {renderDdayCell(entry.lastMerge, { colType: "last", noBorderRight: true })}
+                    </tr>
+                  );
+                });
+              })}
+            </tbody>
+          </table>
+        </div>
+        );
+      })()}
+
+      {/* ─── 자리배치도 탭 ─── */}
+      {/* ─── 기기/TO 현황 탭 ─── */}
+      {tab === "overview" && (
+        <div style={{ flex: 1, overflow: "auto", padding: 20 }}>
+          <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-start" }}>
+            {/* 기기 보유 현황 */}
+            <div style={{ flex: 1, minWidth: 380 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <h3 style={{ margin: 0, color: t.text, fontSize: 13, fontWeight: 700 }}>기기 보유 현황</h3>
+                <button onClick={() => setEditingDevice({ id: null, model: "", team: "", holder: "", returned: false, returnDate: "" })}
+                  style={{ padding: "4px 12px", background: t.btnBg, border: "none", borderRadius: 5, color: t.btnFg, cursor: "pointer", fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4 }}><LuIcon name="plus" size={12} /> 추가</button>
+              </div>
+              <table style={{ width: "100%", borderCollapse: "collapse", border: `1px solid ${t.border}`, fontSize: 12 }}>
+                <thead><tr style={{ background: t.headerBg }}>
+                  {["기종","팀","보유자","상태","반납일자"].map((h,i) => <th key={i} style={{ ...thS(t), fontSize: 11, padding: "7px 6px" }}>{h}</th>)}
+                </tr></thead>
+                <tbody>
+                  {devices.map((dev, i) => (
+                    <tr key={dev.id} onClick={() => setEditingDevice(dev)} style={{ background: i % 2 === 0 ? t.tableBg : t.tableAlt, cursor: "pointer" }}
+                      onMouseOver={e => e.currentTarget.style.background = t.tableHover} onMouseOut={e => e.currentTarget.style.background = i % 2 === 0 ? t.tableBg : t.tableAlt}>
+                      <td style={{ ...tdS(t), padding: "6px", fontWeight: 500, textAlign: "left" }}>{dev.model}</td>
+                      <td style={{ ...tdS(t), padding: "6px" }}>{dev.returned ? "-" : (dev.team || "-")}</td>
+                      <td style={{ ...tdS(t), padding: "6px" }}>{dev.returned ? "-" : (dev.holder || "-")}</td>
+                      <td style={{ ...tdS(t), padding: "6px" }}>
+                        <span style={{ padding: "2px 8px", borderRadius: 3, fontSize: 10, fontWeight: 600,
+                          background: dev.returned ? (mode === "dark" ? "#323544" : "#f0f3f6") : (mode === "dark" ? "rgba(120,137,168,0.10)" : "rgba(26,127,55,.1)"),
+                          color: dev.returned ? t.textDim : (mode === "dark" ? "#7889a8" : "#1a7f37") }}>
+                          {dev.returned ? "반납" : "보유중"}
+                        </span>
+                      </td>
+                      <td style={{ ...tdS(t), padding: "6px", fontSize: 11 }}>{dev.returned && dev.returnDate ? dev.returnDate : "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* TO 현황 */}
+            <div style={{ flex: 1, minWidth: 340 }}>
+              <h3 style={{ margin: "0 0 8px", color: t.text, fontSize: 13, fontWeight: 700 }}>TO 현황</h3>
+              <table style={{ width: "100%", borderCollapse: "collapse", border: `1px solid ${t.border}`, fontSize: 12 }}>
+                <thead><tr style={{ background: t.headerBg }}>
+                  {["팀","현재","입사예정","추가모집","비고"].map((h,i) => <th key={i} style={{ ...thS(t), fontSize: 11, padding: "7px 6px" }}>{h}</th>)}
+                </tr></thead>
+                <tbody>
+                  {toData.map((row, i) => {
+                    const cur = toCurrentCount[row.id] || 0;
+                    return (
+                      <tr key={row.id} onClick={() => setEditingTo(row)} style={{ background: i % 2 === 0 ? t.tableBg : t.tableAlt, cursor: "pointer" }}
+                        onMouseOver={e => e.currentTarget.style.background = t.tableHover} onMouseOut={e => e.currentTarget.style.background = i % 2 === 0 ? t.tableBg : t.tableAlt}>
+                        <td style={{ ...tdS(t), padding: "6px", fontWeight: 600 }}>{row.label}</td>
+                        <td style={{ ...tdS(t), padding: "6px" }}>{cur}</td>
+                        <td style={{ ...tdS(t), padding: "6px", color: row.incoming > 0 ? t.accent : t.textDim }}>{row.incoming}</td>
+                        <td style={{ ...tdS(t), padding: "6px", color: row.recruiting > 0 ? t.accentAlt : t.textDim }}>{row.recruiting}</td>
+                        <td style={{ ...tdS(t), padding: "6px", textAlign: "left", fontSize: 11 }}>{row.note || "-"}</td>
+                      </tr>
+                    );
+                  })}
+                  <tr style={{ background: t.headerBg, fontWeight: 700 }}>
+                    <td style={{ ...tdS(t), padding: "6px", fontWeight: 700 }}>합계</td>
+                    <td style={{ ...tdS(t), padding: "6px", fontWeight: 700 }}>{toData.reduce((s, r) => s + (toCurrentCount[r.id] || 0), 0)}</td>
+                    <td style={{ ...tdS(t), padding: "6px", fontWeight: 700 }}>{toData.reduce((s, r) => s + r.incoming, 0)}</td>
+                    <td style={{ ...tdS(t), padding: "6px", fontWeight: 700 }}>{toData.reduce((s, r) => s + r.recruiting, 0)}</td>
+                    <td style={{ ...tdS(t), padding: "6px", fontSize: 11 }}>총 {toData.reduce((s, r) => s + (toCurrentCount[r.id] || 0), 0) + toData.reduce((s, r) => s + r.incoming, 0) + toData.reduce((s, r) => s + r.recruiting, 0)}명</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === "seating" && (
+        <div style={{ flex: 1, overflow: "auto", padding: 20 }}>
+          <SeatingChart t={t} mode={mode} seatData={seatData} memberInfo={memberInfoMap} seatDragRef={seatDragRef}
+            onEdit={(secIdx, rowIdx, colIdx, seat) => setEditingSeat({ secIdx, rowIdx, colIdx, seat })}
+            onDrop={(from, to, toCell) => {
+              if (toCell && toCell.name) { setSeatSwapConfirm({ from, to }); }
+              else { swapSeats(from, to); }
+            }} />
+        </div>
+      )}
+
+      {/* ─── 하단 탭 바 ─── */}
+      <div style={{ display: "flex", justifyContent: "center", gap: 6, padding: "6px 14px", background: t.panelBg, borderTop: `1px solid ${t.border}`, flexShrink: 0 }}>
+        {tabBtn("overview", "기기/TO", "monitor")}{tabBtn("schedule", "아트 스케줄", "calendar")}{tabBtn("updates", "업데이트 일정", "listChecks")}{tabBtn("seating", "자리배치도", "layoutGrid")}
+      </div>
+      </div>{/* end inner column */}
+
+      {/* ─── 히스토리 사이드 패널 ─── */}
+      {showHistory && (
+        <div style={{ width: 220, flexShrink: 0, borderLeft: `1px solid ${t.border}`, background: mode === "dark" ? "#1e2029" : "#f6f8fa", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ padding: "8px 10px", borderBottom: `1px solid ${t.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontWeight: 700, color: t.accent, fontSize: 11 }}>변경 기록</span>
+            <div style={{ display: "flex", gap: 4 }}>
+              {changeLog.length > 0 && <button onClick={() => setChangeLog([])} style={{ ...btn(t.border, t.text), fontSize: 9, padding: "2px 6px", border: `1px solid ${t.border}` }}>지우기</button>}
+              <button onClick={() => setShowHistory(false)} style={{ ...btn(t.border, t.text), fontSize: 9, padding: "2px 6px", border: `1px solid ${t.border}` }}><LuIcon name="x" size={12} /> 닫기</button>
+            </div>
+          </div>
+          <div style={{ flex: 1, overflowY: "auto", padding: "4px 8px", fontSize: 11 }}>
+            {changeLog.length === 0 ? <div style={{ color: t.textDim, padding: 12, textAlign: "center" }}>변경 기록이 없습니다</div> :
+              <div style={{ display: "flex", flexDirection: "column-reverse", gap: 2 }}>
+                {changeLog.map((log, i) => <div key={i} style={{ padding: "4px 0", borderBottom: `1px solid ${t.border}22` }}>
+                  <div style={{ fontSize: 9, color: t.textDim }}>{log.time}</div>
+                  <div style={{ color: log.desc.startsWith("↩") ? t.accentAlt : t.text, fontSize: 11 }}>{log.desc}</div>
+                </div>)}
+              </div>
+            }
+          </div>
+        </div>
+      )}
+      </div>{/* end main + history wrapper */}
+
+      {/* ─── 컨텍스트 메뉴 ─── */}
+      {contextMenu && (
+        <div style={{ position: "fixed", left: contextMenu.x, top: contextMenu.y, background: t.panelBg, border: `1px solid ${t.border}`, borderRadius: 8, boxShadow: `0 4px 20px ${t.shadowColor}`, zIndex: 2000, minWidth: 150, padding: 4 }}>
+          {Object.entries(STATUS_COLORS).filter(([k]) => k !== "leave").map(([k, v]) => (
+            <div key={k} onClick={() => { pushUndo("상태 변경"); setTasks((p) => p.map((x) => x.id === contextMenu.task.id ? { ...x, status: k } : x)); setContextMenu(null); }}
+              style={{ padding: "7px 14px", cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", gap: 8, borderRadius: 5 }}
+              onMouseOver={(e) => e.currentTarget.style.background = t.hoverBg} onMouseOut={(e) => e.currentTarget.style.background = "transparent"}>
+              <LuIcon name={STATUS_ICON_MAP[k]} size={14} color={mode === "dark" ? v.bg : (v.borderLight || v.border)} />{v.label}
+            </div>
+          ))}
+          <div style={{ height: 1, background: t.border, margin: "4px 0" }} />
+          <div onClick={() => { deleteTask(contextMenu.task.id); setContextMenu(null); }} style={{ padding: "7px 14px", cursor: "pointer", fontSize: 12, color: t.accentAlt, borderRadius: 5, display: "flex", alignItems: "center", gap: 8 }}
+            onMouseOver={(e) => e.currentTarget.style.background = t.hoverBg} onMouseOut={(e) => e.currentTarget.style.background = "transparent"}><LuIcon name="trash2" size={14} />삭제</div>
+        </div>
+      )}
+
+      {/* ─── 툴팁 ─── */}
+      {tooltip && (
+        <div style={{ position: "fixed", left: tooltip.x, top: tooltip.y, background: t.panelBg, border: `1px solid ${t.border}`, borderRadius: 10, padding: "10px 14px", boxShadow: `0 4px 20px ${t.shadowColor}`, zIndex: 2500, minWidth: 160, pointerEvents: "none" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 4 }}>{tooltip.name}{(() => { const rs = tooltip.roles || []; const display = rs.filter(r => r !== "사원"); return display.length > 0 ? <span style={{ fontSize: 10, color: t.accent, fontWeight: 400, marginLeft: 5 }}>{display.join("/")}</span> : ""; })()}</div>
+          <div style={{ fontSize: 11, color: t.textDim, display: "flex", alignItems: "center", gap: 4, marginBottom: tooltip.email ? 3 : 0 }}>
+            <span style={{ color: t.accent, fontSize: 10 }}>팀</span> {tooltip.team}
+          </div>
+          {tooltip.email && <div style={{ fontSize: 11, color: t.textDim, display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ color: t.accent, fontSize: 10 }}>메일</span> {tooltip.email}
+          </div>}
+        </div>
+      )}
+
+      {/* ─── 모달들 ─── */}
+      {showTaskModal && editingTask && (
+        <Modal t={t} onClose={() => { setShowTaskModal(false); setEditingTask(null); }} title={editingTask.id ? "일정 수정" : "새 일정"}>
+          <TaskForm t={t} mode={mode} task={editingTask} onSave={saveTask} onDelete={editingTask.id ? () => deleteTask(editingTask.id) : null} members={flatRows.filter((r) => !r.isEmpty)} />
+        </Modal>
+      )}
+      {showMilestoneModal && editingMilestone && (
+        <Modal t={t} onClose={() => { setShowMilestoneModal(false); setEditingMilestone(null); }} title={editingMilestone.id ? "마일스톤 수정" : "새 마일스톤"}>
+          <MilestoneForm t={t} ms={editingMilestone} onSave={saveMilestone} onDelete={editingMilestone.id ? () => deleteMilestone(editingMilestone.id) : null} />
+        </Modal>
+      )}
+      {showTeamModal && (
+        <Modal t={t} onClose={() => { setShowTeamModal(false); setEditingTeam(null); }} title={teamModalMode === "add" ? "팀 추가" : "팀 설정"}>
+          {teamModalMode === "add" ? <NameForm t={t} placeholder="팀 이름" onSubmit={addTeam} label="추가" /> : editingTeam && <TeamEditForm t={t} team={editingTeam} onRename={(n) => renameTeam(editingTeam.id, n)} onDelete={() => { removeTeam(editingTeam.id); setShowTeamModal(false); setEditingTeam(null); }} />}
+        </Modal>
+      )}
+      {showMemberModal && (
+        <Modal t={t} onClose={() => setShowMemberModal(false)} title="인원 추가">
+          <MemberForm t={t} teamName={teams.find(x => x.id === targetTeamId)?.name || ""} onSubmit={(name, email) => addMember(targetTeamId, name, email)} />
+        </Modal>
+      )}
+      {editingMember && (() => {
+        const eTeam = teams.find(x => x.id === editingMember.teamId);
+        const eMember = eTeam?.members.find(m => m.id === editingMember.memberId);
+        if (!eTeam || !eMember) return null;
+        return (
+          <Modal t={t} onClose={() => setEditingMember(null)} title="인원 수정">
+            <MemberEditForm t={t} member={eMember} teams={teams} currentTeamId={eTeam.id} onSave={(newTeamId, name, email, role, concurrent, roles) => updateMember(eTeam.id, newTeamId, eMember.id, name, email, role, concurrent, roles)} />
+          </Modal>
+        );
+      })()}
+      {editingUpdate && (() => {
+        const eEntry = updateData[editingUpdate] || {};
+        const eMk = monthKey(editingUpdate);
+        const ePend = toArr(pendingByMonth[eMk]);
+        return (
+          <Modal t={t} onClose={() => setEditingUpdate(null)} title={`업데이트 항목 편집 — ${fmtDateKR(editingUpdate)}`}>
+            <UpdateForm t={t} mode={mode} dateStr={editingUpdate} entry={{ ...eEntry, pending: ePend }} monthLabel={eMk} onSave={(data) => saveUpdateEntry(editingUpdate, data)} />
+          </Modal>
+        );
+      })()}
+      {editingSeat && (
+        <Modal t={t} onClose={() => setEditingSeat(null)} title={`좌석 ${editingSeat.seat.no} 수정`}>
+          <SeatEditForm t={t} seat={editingSeat.seat} onSave={(updates) => updateSeat(editingSeat.secIdx, editingSeat.rowIdx, editingSeat.colIdx, updates)} />
+        </Modal>
+      )}
+      {seatSwapConfirm && (() => {
+        const fCell = seatData[seatSwapConfirm.from.si]?.rows[seatSwapConfirm.from.ri]?.[seatSwapConfirm.from.ci];
+        const tCell = seatData[seatSwapConfirm.to.si]?.rows[seatSwapConfirm.to.ri]?.[seatSwapConfirm.to.ci];
+        return (
+          <Modal t={t} onClose={() => setSeatSwapConfirm(null)} title="자리 교체 확인">
+            <p style={{ color: t.text, fontSize: 13, lineHeight: 1.6, margin: "0 0 16px" }}>변경하려는 자리에 <b style={{ color: t.accent }}>{tCell?.name}</b>님이 있습니다.<br/>자리를 교체할까요?</p>
+            <p style={{ color: t.textDim, fontSize: 12, margin: "0 0 16px" }}>{fCell?.name || "빈자리"} ({fCell?.team || "미지정"}) ↔ {tCell?.name || "빈자리"} ({tCell?.team || "미지정"})</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => { swapSeats(seatSwapConfirm.from, seatSwapConfirm.to); setSeatSwapConfirm(null); }}
+                style={{ flex: 1, padding: 10, background: t.btnBg, border: "none", borderRadius: 8, color: t.btnFg, cursor: "pointer", fontWeight: 700, fontSize: 13 }}>교체</button>
+              <button onClick={() => setSeatSwapConfirm(null)}
+                style={{ flex: 1, padding: 10, background: t.border, border: "none", borderRadius: 8, color: t.text, cursor: "pointer", fontWeight: 700, fontSize: 13 }}>취소</button>
+            </div>
+          </Modal>
+        );
+      })()}
+      {editingDevice && (
+        <Modal t={t} onClose={() => setEditingDevice(null)} title={editingDevice.id ? "기기 수정" : "기기 추가"}>
+          <DeviceEditForm t={t} device={editingDevice} allMembers={allMembers} onSave={saveDevice} onDelete={editingDevice.id ? () => deleteDevice(editingDevice.id) : null} />
+        </Modal>
+      )}
+      {editingTo && (
+        <Modal t={t} onClose={() => setEditingTo(null)} title="TO 현황 수정">
+          <ToEditForm t={t} row={editingTo} currentCount={toCurrentCount[editingTo.id] || 0} onSave={saveToRow} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+/* ─── 유틸 컴포넌트 ─── */
+function Sep({ t }) { return <div style={{ width: 1, height: 20, background: t.border }} />; }
+function btn(bg, fg) { return { padding: "5px 12px", background: bg, border: "none", borderRadius: 6, color: fg || "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 5 }; }
+function iconBtn(color) { return { background: "none", border: "none", color, cursor: "pointer", padding: "0 3px", display: "inline-flex", alignItems: "center" }; }
+function thS(t) { return { padding: "10px 8px", textAlign: "center", borderBottom: `2.5px solid ${t.border}`, borderRight: `1.5px solid ${t.border}`, color: t.text, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", position: "relative", userSelect: "none" }; }
+function tdS(t) { return { padding: "8px 8px", borderBottom: `1.5px solid ${t.border}`, borderRight: `1.5px solid ${t.border}`, fontSize: 12, textAlign: "center", verticalAlign: "middle", color: t.text }; }
+
+function Modal({ children, onClose, title, t }) {
+  React.useEffect(() => {
+    const h = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [onClose]);
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000 }}>
+      <div style={{ background: t.panelBg, borderRadius: 14, padding: 28, minWidth: 380, maxWidth: 540, border: `1px solid ${t.border}`, boxShadow: `0 12px 40px ${t.shadowColor}`, maxHeight: "80vh", overflow: "auto", position: "relative" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <h3 style={{ margin: 0, color: t.accent, fontSize: 17, fontWeight: 700 }}>{title}</h3>
+          <button onClick={onClose} style={{ background: "transparent", border: "none", color: t.textDim, cursor: "pointer", padding: "2px 6px", borderRadius: 6, lineHeight: 1, display: "flex" }} onMouseOver={(e) => e.currentTarget.style.color = t.text} onMouseOut={(e) => e.currentTarget.style.color = t.textDim}><LuIcon name="x" size={18} /></button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function TaskForm({ t, mode, task, onSave, onDelete, members }) {
+  const [f, setF] = useState({ ...task });
+  const up = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const iS = { width: "100%", padding: "10px 12px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.text, borderRadius: 7, fontSize: 14, marginTop: 6, boxSizing: "border-box", outline: "none" };
+  const lS = { fontSize: 13, color: t.text, fontWeight: 600, display: "flex", flexDirection: "column", marginBottom: 12 };
+  return (
+    <div>
+      {f.status !== "leave" && <label style={lS}>작업명<input value={f.title} onChange={(e) => up("title", e.target.value)} style={iS} autoFocus placeholder="작업 내용" /></label>}
+      <label style={lS}>담당자<select value={f.memberId} onChange={(e) => up("memberId", e.target.value)} style={iS}>{members.map((m) => <option key={m.memberId} value={m.memberId}>{m.teamName} - {m.memberName}</option>)}</select></label>
+      <div style={{ display: "flex", gap: 10 }}>
+        <label style={{ ...lS, flex: 1 }}>시작일<input type="date" value={f.startDate} onChange={(e) => up("startDate", e.target.value)} style={iS} /></label>
+        <label style={{ ...lS, flex: 1 }}>종료일<input type="date" value={f.endDate} onChange={(e) => up("endDate", e.target.value)} style={iS} /></label>
+      </div>
+      <label style={lS}>상태
+        <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+          {Object.entries(STATUS_COLORS).map(([k, v]) => (
+            <button key={k} onClick={() => { up("status", k); if (k === "leave" && !LEAVE_TYPES.includes(f.title)) up("title", LEAVE_TYPES[0]); }} style={{ flex: 1, padding: "10px 0", background: f.status === k ? (mode === "dark" ? v.bg : v.bgLight) : t.inputBg, border: `2px solid ${f.status === k ? (mode === "dark" ? v.border : (v.borderLight || v.border)) : t.inputBorder}`, borderRadius: 7, color: f.status === k ? (mode === "dark" ? (v.text || "#c4c8d0") : (v.borderLight || v.border)) : t.textDim, cursor: "pointer", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}><LuIcon name={STATUS_ICON_MAP[k]} size={15} />{v.label}</button>
+          ))}
+        </div>
+        {f.status === "leave" && (
+          <div style={{ display: "flex", gap: 5, marginTop: 8, flexWrap: "wrap" }}>
+            {LEAVE_TYPES.map((lt) => {
+              const lti = LEAVE_TYPE_INFO[lt];
+              return <button key={lt} onClick={() => up("title", lt)} style={{ padding: "7px 12px", background: f.title === lt ? (mode === "dark" ? "#6a9ab0" : "#0969da") : t.inputBg, border: `1.5px solid ${f.title === lt ? (mode === "dark" ? "#6a9ab0" : "#0969da") : t.inputBorder}`, borderRadius: 6, color: f.title === lt ? (mode === "dark" ? "#d4eef8" : "#fff") : t.textDim, cursor: "pointer", fontSize: 13, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 5 }}>{lti ? <LuIcon name={lti.icon} size={14} /> : null}{lt}</button>;
+            })}
+          </div>
+        )}
+      </label>
+      <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+        <button onClick={() => onSave(f)} style={{ flex: 1, padding: 12, background: t.btnBg, border: "none", borderRadius: 8, color: t.btnFg, cursor: "pointer", fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><LuIcon name="save" size={15} />저장</button>
+        {onDelete && <button onClick={onDelete} style={{ padding: "12px 18px", background: "transparent", border: `1px solid ${t.deleteBg}`, borderRadius: 8, color: t.deleteBg, cursor: "pointer", fontWeight: 600, fontSize: 14, display: "inline-flex", alignItems: "center", gap: 5 }}><LuIcon name="trash2" size={15} />삭제</button>}
+      </div>
+    </div>
+  );
+}
+
+function MilestoneForm({ t, ms, onSave, onDelete }) {
+  const [f, setF] = useState({ ...ms, status: ms.status || "upcoming" });
+  const up = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const iS = { width: "100%", padding: "10px 12px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.text, borderRadius: 7, fontSize: 14, marginTop: 6, boxSizing: "border-box", outline: "none" };
+  const lS = { fontSize: 13, color: t.text, fontWeight: 600, display: "flex", flexDirection: "column", marginBottom: 12 };
+  return (
+    <div>
+      <label style={lS}>이름<input value={f.name} onChange={(e) => up("name", e.target.value)} style={iS} autoFocus /></label>
+      <div style={{ display: "flex", gap: 10 }}>
+        <label style={{ ...lS, flex: 1 }}>시작일<input type="date" value={f.startDate} onChange={(e) => up("startDate", e.target.value)} style={iS} /></label>
+        <label style={{ ...lS, flex: 1 }}>종료일<input type="date" value={f.endDate} onChange={(e) => up("endDate", e.target.value)} style={iS} /></label>
+      </div>
+      <label style={lS}>상태
+        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+          {Object.entries(MILESTONE_STATUS).map(([k, v]) => (
+            <button key={k} onClick={() => up("status", k)}
+              style={{ flex: 1, padding: "10px 0", background: f.status === k ? v.grad : t.inputBg, border: `2px solid ${f.status === k ? (k === "live" ? "#4a5a75" : "#5a5070") : t.inputBorder}`, borderRadius: 7, color: f.status === k ? "#fff" : t.textDim, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>{v.label}</button>
+          ))}
+        </div>
+      </label>
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+        <button onClick={() => onSave(f)} style={{ flex: 1, padding: 12, background: t.btnBg, border: "none", borderRadius: 8, color: t.btnFg, cursor: "pointer", fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><LuIcon name="save" size={15} />저장</button>
+        {onDelete && <button onClick={onDelete} style={{ padding: "12px 18px", background: "transparent", border: `1px solid ${t.deleteBg}`, borderRadius: 8, color: t.deleteBg, cursor: "pointer", fontWeight: 600, fontSize: 14, display: "inline-flex", alignItems: "center", gap: 5 }}><LuIcon name="trash2" size={15} />삭제</button>}
+      </div>
+    </div>
+  );
+}
+
+function TeamEditForm({ t, team, onRename, onDelete }) {
+  const [name, setName] = useState(team.name);
+  return (
+    <div>
+      <label style={{ fontSize: 13, color: t.text, fontWeight: 600, display: "flex", flexDirection: "column", marginBottom: 14 }}>팀 이름
+        <input value={name} onChange={(e) => setName(e.target.value)} style={{ width: "100%", padding: "10px 12px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.text, borderRadius: 7, fontSize: 14, marginTop: 6, boxSizing: "border-box", outline: "none" }} autoFocus />
+      </label>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={() => onRename(name.trim() || team.name)} style={{ flex: 1, padding: 12, background: t.btnBg, border: "none", borderRadius: 8, color: t.btnFg, cursor: "pointer", fontWeight: 700, fontSize: 14 }}>이름 변경</button>
+        <button onClick={onDelete} style={{ padding: "12px 18px", background: "transparent", border: `1px solid ${t.deleteBg}`, borderRadius: 8, color: t.deleteBg, cursor: "pointer", fontWeight: 600, fontSize: 14, display: "inline-flex", alignItems: "center", gap: 5 }}><LuIcon name="trash2" size={15} />팀 삭제</button>
+      </div>
+    </div>
+  );
+}
+
+function UpdateForm({ t, mode, dateStr, entry, monthLabel, onSave }) {
+  const initArr = (v) => Array.isArray(v) ? [...v] : (v ? v.split("\n").filter(Boolean) : []);
+  const [f, setF] = useState({
+    milestone: entry.milestone || "",
+    items: initArr(entry.items),
+    itemTeams: (entry.itemTeams || []).map(t => [...(t || [])]),
+    pending: initArr(entry.pending),
+    firstMerge: entry.firstMerge || "",
+    lastMerge: entry.lastMerge || "",
+  });
+  const up = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const addItem = (field) => setF(p => ({ ...p, [field]: [...p[field], ""], ...(field === "items" ? { itemTeams: [...p.itemTeams, []] } : {}) }));
+  const updateItem = (field, idx, val) => setF(p => { const a = [...p[field]]; a[idx] = val; return { ...p, [field]: a }; });
+  const removeItem = (field, idx) => setF(p => { const a = [...p[field]]; a.splice(idx, 1); const upd = { ...p, [field]: a }; if (field === "items") { const ta = [...p.itemTeams]; ta.splice(idx, 1); upd.itemTeams = ta; } return upd; });
+  const toggleItemTeam = (idx, teamName) => setF(p => { const ta = [...p.itemTeams]; const cur = [...(ta[idx] || [])]; const ti = cur.indexOf(teamName); if (ti >= 0) cur.splice(ti, 1); else cur.push(teamName); ta[idx] = cur; return { ...p, itemTeams: ta }; });
+  const iS = { width: "100%", padding: "10px 12px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.text, borderRadius: 7, fontSize: 14, marginTop: 6, boxSizing: "border-box", outline: "none" };
+  const lS = { fontSize: 13, color: t.text, fontWeight: 600, display: "flex", flexDirection: "column", marginBottom: 12 };
+  const itemRow = { display: "flex", gap: 6, alignItems: "center", marginTop: 4 };
+  const delBtn = { background: "none", border: "none", color: t.accentAlt, cursor: "pointer", fontSize: 18, padding: "0 4px", lineHeight: 1, flexShrink: 0 };
+  const addBtn = { padding: "6px 12px", background: "transparent", border: `1px dashed ${t.border}`, borderRadius: 6, color: t.textDim, cursor: "pointer", fontSize: 13, marginTop: 6, width: "100%" };
+  const renderList = (field, label, placeholder) => (
+    <div style={{ ...lS, marginBottom: 14 }}>
+      <span>{label}</span>
+      {f[field].map((item, i) => (
+        <div key={i} style={itemRow}>
+          <input value={item} onChange={(e) => updateItem(field, i, e.target.value)} style={{ ...iS, marginTop: 0, flex: 1 }} placeholder={placeholder} autoFocus={i === f[field].length - 1} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addItem(field); } }} />
+          <button onClick={() => removeItem(field, i)} style={delBtn} title="삭제"><LuIcon name="x" size={14} /></button>
+        </div>
+      ))}
+      <button onClick={() => addItem(field)} style={{ ...addBtn, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}><LuIcon name="plus" size={14} /> {label} 추가</button>
+    </div>
+  );
+  const doSave = () => { const validIdxs = f.items.map((v, i) => v ? i : -1).filter(i => i >= 0); const clean = { ...f, items: validIdxs.map(i => f.items[i]), itemTeams: validIdxs.map(i => f.itemTeams[i] || []), pending: f.pending.filter(Boolean) }; onSave(clean); };
+  const renderItemsWithTeams = () => (
+    <div style={{ ...lS, marginBottom: 14 }}>
+      <span>항목</span>
+      {f.items.map((item, i) => (
+        <div key={i} style={{ marginTop: 6, background: t.inputBg, border: `1px solid ${t.inputBorder}`, borderRadius: 8, padding: "8px 10px" }}>
+          <div style={itemRow}>
+            <input value={item} onChange={(e) => updateItem("items", i, e.target.value)} style={{ ...iS, marginTop: 0, flex: 1, border: "none", padding: "6px 8px", background: "transparent" }} placeholder="항목을 입력하세요" autoFocus={i === f.items.length - 1} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addItem("items"); } }} />
+            <button onClick={() => removeItem("items", i)} style={delBtn} title="삭제"><LuIcon name="x" size={14} /></button>
+          </div>
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 6 }}>
+            {TEAM_TAG_NAMES.map(tn => { const sel = (f.itemTeams[i] || []).includes(tn); const tc = TEAM_TAG_COLORS[tn]; const c = tc[mode] || tc.dark; return (
+              <button key={tn} onClick={() => toggleItemTeam(i, tn)} style={{ padding: "3px 10px", fontSize: 11, borderRadius: 10, border: `1px solid ${sel ? c.border : t.border}`, background: sel ? c.bg : "transparent", color: sel ? c.color : t.textDim, cursor: "pointer", fontWeight: sel ? 700 : 500, opacity: sel ? 1 : 0.5, transition: "all .15s" }}>{tn}</button>
+            ); })}
+          </div>
+        </div>
+      ))}
+      <button onClick={() => addItem("items")} style={{ ...addBtn, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}><LuIcon name="plus" size={14} /> 항목 추가</button>
+    </div>
+  );
+  return (
+    <div>
+      <label style={lS}>마일스톤 (예: M38)
+        <input value={f.milestone} onChange={(e) => up("milestone", e.target.value)} style={iS} placeholder="M38" autoFocus />
+      </label>
+      {renderItemsWithTeams()}
+      {renderList("pending", `미정 (${monthLabel || ""}월 공통)`, "미정 항목을 입력하세요")}
+      <div style={{ display: "flex", gap: 10 }}>
+        <label style={{ ...lS, flex: 1 }}><span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><LuIcon name="gitMerge" size={16} /> 1차 통머지</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input type="date" value={f.firstMerge} onChange={(e) => up("firstMerge", e.target.value)} style={{ ...iS, flex: 1 }} />
+            {f.firstMerge && (() => { const dd = calcDday(f.firstMerge); const ds = ddayColor(dd); return <span style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", ...ds }}>{fmtDday(dd)}</span>; })()}
+          </div>
+        </label>
+        <label style={{ ...lS, flex: 1 }}><span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><LuIcon name="rocket" size={16} /> 마지막 통머지</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input type="date" value={f.lastMerge} onChange={(e) => up("lastMerge", e.target.value)} style={{ ...iS, flex: 1 }} />
+            {f.lastMerge && (() => { const dd = calcDday(f.lastMerge); const ds = ddayColor(dd); return <span style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", ...ds }}>{fmtDday(dd)}</span>; })()}
+          </div>
+        </label>
+      </div>
+      <button onClick={doSave} style={{ width: "100%", padding: 12, background: t.btnBg, border: "none", borderRadius: 8, color: t.btnFg, cursor: "pointer", fontWeight: 700, fontSize: 14, marginTop: 10 }}>저장</button>
+    </div>
+  );
+}
+
+function resolveEmail(v) { if (!v.trim()) return ""; return v.includes("@") ? v.trim() : v.trim() + EMAIL_DOMAIN; }
+
+function MemberForm({ t, teamName, onSubmit }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const iS = { width: "100%", padding: "10px 12px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.text, borderRadius: 7, fontSize: 14, marginTop: 6, boxSizing: "border-box", outline: "none" };
+  const lS = { fontSize: 13, color: t.text, fontWeight: 600, display: "flex", flexDirection: "column", marginBottom: 12 };
+  const submit = () => { if (name.trim()) { onSubmit(name.trim(), resolveEmail(email)); setName(""); setEmail(""); } };
+  return (
+    <div>
+      <label style={lS}>팀<input value={teamName} disabled style={{ ...iS, opacity: 0.6 }} /></label>
+      <label style={lS}>이름<input value={name} onChange={(e) => setName(e.target.value)} style={iS} autoFocus placeholder="이름 입력" onKeyDown={(e) => { if (e.key === "Enter") submit(); }} /></label>
+      <label style={lS}>이메일
+        <div style={{ position: "relative" }}>
+          <input value={email} onChange={(e) => setEmail(e.target.value)} style={iS} placeholder="username" onKeyDown={(e) => { if (e.key === "Enter") submit(); }} />
+          <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: t.textDim, pointerEvents: "none", marginTop: 3 }}>{!email.includes("@") && email.trim() ? EMAIL_DOMAIN : ""}</span>
+        </div>
+      </label>
+      <button onClick={submit}
+        style={{ width: "100%", padding: 12, background: t.btnBg, border: "none", borderRadius: 8, color: t.btnFg, cursor: "pointer", fontWeight: 700, fontSize: 14, marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><LuIcon name="userPlus" size={15} />추가</button>
+    </div>
+  );
+}
+
+const ROLES = ["사원", "부팀장", "팀장", "실장"];
+function MemberEditForm({ t, member, teams, currentTeamId, onSave }) {
+  const [name, setName] = useState(member.name);
+  const [email, setEmail] = useState(member.email || "");
+  const [teamId, setTeamId] = useState(currentTeamId);
+  const initRoles = member.concurrent && Array.isArray(member.roles) ? member.roles : [member.role || "사원"];
+  const [selectedRoles, setSelectedRoles] = useState(initRoles);
+  const [concurrent, setConcurrent] = useState(member.concurrent || false);
+  const toggleRole = (r) => {
+    if (concurrent) {
+      setSelectedRoles(prev => prev.includes(r) ? (prev.length > 1 ? prev.filter(x => x !== r) : prev) : prev.length < 2 ? [...prev, r] : [prev[1], r]);
+    } else {
+      setSelectedRoles([r]);
+    }
+  };
+  const handleConcurrentChange = (checked) => {
+    setConcurrent(checked);
+    if (!checked && selectedRoles.length > 1) setSelectedRoles([selectedRoles[0]]);
+  };
+  const iS = { width: "100%", padding: "8px 10px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.text, borderRadius: 7, fontSize: 13, marginTop: 4, boxSizing: "border-box", outline: "none" };
+  const lS = { fontSize: 11, color: t.textDim, display: "flex", flexDirection: "column", marginBottom: 10 };
+  return (
+    <div>
+      <label style={lS}>팀
+        <select value={teamId} onChange={(e) => setTeamId(e.target.value)} style={{ ...iS, cursor: "pointer" }}>
+          {teams.map((tm) => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
+        </select>
+      </label>
+      <label style={lS}>이름<input value={name} onChange={(e) => setName(e.target.value)} style={iS} autoFocus /></label>
+      <label style={lS}>이메일
+        <div style={{ position: "relative" }}>
+          <input value={email} onChange={(e) => setEmail(e.target.value)} style={iS} placeholder="username" />
+          <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: t.textDim, pointerEvents: "none", marginTop: 3 }}>{!email.includes("@") && email.trim() ? EMAIL_DOMAIN : ""}</span>
+        </div>
+      </label>
+      <label style={{ ...lS, flexDirection: "row", alignItems: "center", gap: 8, cursor: "pointer", marginBottom: 6 }}>
+        <input type="checkbox" checked={concurrent} onChange={(e) => handleConcurrentChange(e.target.checked)} style={{ accentColor: t.accent }} />
+        <span>겸임 {concurrent ? "(직급 2개 선택)" : ""}</span>
+      </label>
+      <label style={lS}>직급
+        <div style={{ display: "flex", gap: 5, marginTop: 4 }}>
+          {ROLES.map(r => { const sel = selectedRoles.includes(r); return <button key={r} onClick={() => toggleRole(r)} style={{ flex: 1, padding: "7px 0", background: sel ? t.accent : t.inputBg, border: `1.5px solid ${sel ? t.accent : t.inputBorder}`, borderRadius: 6, color: sel ? "#fff" : t.textDim, cursor: "pointer", fontSize: 11, fontWeight: 600 }}>{r}</button>; })}
+        </div>
+      </label>
+      <button onClick={() => { if (name.trim()) onSave(teamId, name.trim(), resolveEmail(email), concurrent ? selectedRoles[0] : selectedRoles[0], concurrent, concurrent ? selectedRoles : [selectedRoles[0]]); }}
+        style={{ width: "100%", padding: 10, background: t.btnBg, border: "none", borderRadius: 8, color: t.btnFg, cursor: "pointer", fontWeight: 700, fontSize: 13, marginTop: 4 }}>저장</button>
+    </div>
+  );
+}
+
+function NameForm({ t, placeholder, onSubmit, label }) {
+  const [name, setName] = useState("");
+  return (
+    <div style={{ display: "flex", gap: 8 }}>
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder}
+        style={{ flex: 1, padding: "8px 10px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.text, borderRadius: 7, fontSize: 13, outline: "none" }} autoFocus
+        onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) { onSubmit(name.trim()); setName(""); } }} />
+      <button onClick={() => { if (name.trim()) { onSubmit(name.trim()); setName(""); } }}
+        style={{ padding: "8px 18px", background: t.btnBg, border: "none", borderRadius: 7, color: t.btnFg, cursor: "pointer", fontWeight: 700, fontSize: 13 }}>{label}</button>
+    </div>
+  );
+}
+
+function SeatingChart({ t, mode, seatData, onEdit, onDrop, memberInfo, seatDragRef }) {
+  const seatW = 82, seatH = 38, gap = 4, aisleW = 22;
+  const [dragOver, setDragOver] = useState(null);
+  const [tooltip, setTooltip] = useState(null);
+  const tooltipTimer = useRef(null);
+  const showTip = (e, cell) => {
+    clearTimeout(tooltipTimer.current);
+    if (!cell || !cell.name) { setTooltip(null); return; }
+    const info = memberInfo?.[cell.name];
+    const rect = e.currentTarget.getBoundingClientRect();
+    tooltipTimer.current = setTimeout(() => setTooltip({ x: rect.left + rect.width / 2, y: rect.top - 6, cell, info }), 300);
+  };
+  const hideTip = () => { clearTimeout(tooltipTimer.current); setTooltip(null); };
+  const dk = mode === "dark";
+  return (
+    <div style={{ position: "relative" }}>
+      {seatData.map((section, si) => (
+        <div key={si}>
+          {section.rows.map((row, ri) => {
+            if (row.length === 0) return <div key={ri} style={{ height: 10 }} />;
+            return (
+              <div key={ri} style={{ display: "flex", gap, marginBottom: gap }}>
+                {row.map((cell, ci) => {
+                  if (cell === false) return <div key={ci} style={{ width: seatW, flexShrink: 0 }} />;
+                  if (cell === null) return <div key={ci} style={{ width: aisleW, flexShrink: 0 }} />;
+                  const pos = { si, ri, ci };
+                  const isOver = dragOver && dragOver.si === si && dragOver.ri === ri && dragOver.ci === ci;
+                  const teamColor = SEAT_TEAM_COLORS[cell.team] || null;
+                  const isEmpty = !cell.team && !cell.name;
+                  const noTeamColor = dk ? "#586070" : "#8c959f";
+                  const tc = teamColor || noTeamColor;
+                  const bg = isEmpty ? (dk ? "#1e2029" : "#f6f8fa")
+                    : teamColor ? (dk ? (teamColor + "18") : (teamColor + "0c"))
+                    : (dk ? "#222430" : "#f0f3f6");
+                  const borderLeft = (!isEmpty && teamColor) ? `3px solid ${teamColor}${cell.isLead ? "cc" : "88"}` : (isEmpty ? `3px solid ${dk ? "#282b38" : "#d0d7de"}` : `3px solid ${dk ? "#586070" : "#8c959f"}`);
+                  const borderRest = isEmpty ? `1px ${dk ? "dashed" : "solid"} ${dk ? "#282b38" : "#d0d7de"}`
+                    : teamColor ? `1px solid ${dk ? (teamColor + "44") : (teamColor + "28")}`
+                    : `1px solid ${dk ? "#282b38" : "#d0d7de"}`;
+                  return (
+                    <div key={ci} draggable={!isEmpty} onClick={() => onEdit(si, ri, ci, cell)}
+                      onDragStart={(e) => { seatDragRef.current = pos; e.dataTransfer.effectAllowed = "move"; hideTip(); }}
+                      onDragEnd={() => { seatDragRef.current = null; setDragOver(null); }}
+                      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (!isOver) setDragOver(pos); }}
+                      onDragLeave={() => setDragOver(null)}
+                      onDrop={(e) => { e.preventDefault(); setDragOver(null); const from = seatDragRef.current; if (!from) return; if (from.si === si && from.ri === ri && from.ci === ci) return; onDrop(from, pos, cell); seatDragRef.current = null; }}
+                      onMouseEnter={(e) => showTip(e, cell)} onMouseLeave={hideTip}
+                      style={{ width: seatW, height: seatH, background: isOver ? (dk ? "rgba(120,137,168,0.10)" : "rgba(9,105,218,.1)") : bg,
+                        borderLeft: isOver ? `3px solid ${t.accent}` : borderLeft,
+                        borderTop: isOver ? `1px dashed ${t.accent}` : borderRest,
+                        borderRight: isOver ? `1px dashed ${t.accent}` : borderRest,
+                        borderBottom: isOver ? `1px dashed ${t.accent}` : borderRest,
+                        borderRadius: 3, padding: "3px 5px", cursor: isEmpty ? "pointer" : "grab", display: "flex", flexDirection: "column", justifyContent: "center", gap: 1, flexShrink: 0,
+                        transition: "background .1s, border .1s, transform .1s, box-shadow .1s", position: "relative" }}
+                      onMouseOver={(e) => { if (!isEmpty) { e.currentTarget.style.background = teamColor ? (dk ? (teamColor + "28") : (teamColor + "18")) : (dk ? "#2d3044" : "#eaeef2"); e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = `0 2px 6px ${dk ? "rgba(0,0,0,.35)" : "rgba(31,35,40,.08)"}`;} }}
+                      onMouseOut={(e) => { e.currentTarget.style.background = bg; e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}>
+                      {isEmpty ? (
+                        <div style={{ fontSize: 9, color: dk ? "#586070" : "#8c959f", textAlign: "center" }}>미지정</div>
+                      ) : (<>
+                        <div style={{ fontSize: 8, color: teamColor || (dk ? "#586070" : "#8c959f"), fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.1, opacity: .85 }}>{cell.team || "미지정"}</div>
+                        <div style={{ fontSize: 11, color: t.text, fontWeight: cell.isLead ? 700 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 2, lineHeight: 1.2 }}>
+                          {cell.isLead && <LuIcon name="star" size={9} sw={2} color="#9e8548" fill="#9e8548" style={{ flexShrink: 0 }} />}
+                          {cell.name || <span style={{ color: dk ? "#586070" : "#8c959f", fontWeight: 400, fontSize: 9 }}>미지정</span>}
+                        </div>
+                      </>)}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+      {tooltip && (
+        <div style={{ position: "fixed", left: tooltip.x, top: tooltip.y, transform: "translate(-50%, -100%)", background: dk ? "#1e2029" : "#fff", border: `1px solid ${t.border}`, borderRadius: 5, padding: "7px 10px", boxShadow: `0 3px 12px ${dk ? "rgba(0,0,0,.5)" : "rgba(0,0,0,.12)"}`, zIndex: 5000, pointerEvents: "none", minWidth: 140 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 2, display: "flex", alignItems: "center", gap: 3 }}>{tooltip.cell.name}{tooltip.cell.isLead && <LuIcon name="star" size={10} sw={2} color="#9e8548" fill="#9e8548" />}</div>
+          <div style={{ fontSize: 10, color: SEAT_TEAM_COLORS[tooltip.cell.team] || t.textDim, fontWeight: 600, marginBottom: 3 }}>{tooltip.cell.team || "미지정"}</div>
+          {tooltip.info && (<>
+            <div style={{ fontSize: 10, color: t.textDim }}>{(tooltip.info.roles || [tooltip.info.role]).join(", ")}</div>
+            {tooltip.info.email && <div style={{ fontSize: 9, color: t.textDim, marginTop: 1 }}>{tooltip.info.email}</div>}
+          </>)}
+          {!tooltip.info && <div style={{ fontSize: 9, color: t.textDim }}>등록 정보 없음</div>}
+        </div>
+      )}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 9, color: t.textDim, marginTop: 12, alignItems: "center" }}>
+        {Object.entries(SEAT_TEAM_COLORS).map(([team, color]) => (
+          <span key={team} style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+            <span style={{ width: 3, height: 10, background: color, borderRadius: 1 }} />{team}
+          </span>
+        ))}
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 2, marginLeft: 4 }}><LuIcon name="star" size={10} sw={2} color="#f9a825" fill="#f9a825" /> 장급</span>
+        <span style={{ marginLeft: 4, opacity: .6 }}>드래그로 자리 이동</span>
+      </div>
+    </div>
+  );
+}
+
+function SeatEditForm({ t, seat, onSave }) {
+  const [team, setTeam] = useState(seat.team);
+  const [name, setName] = useState(seat.name);
+  const [isLead, setIsLead] = useState(seat.isLead);
+  const iS = { width: "100%", padding: "10px 12px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.text, borderRadius: 7, fontSize: 14, marginTop: 6, boxSizing: "border-box", outline: "none" };
+  const lS = { fontSize: 13, color: t.text, fontWeight: 600, display: "flex", flexDirection: "column", marginBottom: 12 };
+  const teamList = Object.keys(SEAT_TEAM_COLORS);
+  return (
+    <div>
+      <label style={lS}>팀
+        <select value={team} onChange={(e) => setTeam(e.target.value)} style={{ ...iS, cursor: "pointer" }}>
+          <option value="">미지정</option>
+          {teamList.map(tn => <option key={tn} value={tn}>{tn}</option>)}
+        </select>
+      </label>
+      <label style={lS}>이름<input value={name} onChange={(e) => setName(e.target.value)} style={iS} autoFocus placeholder="이름 입력" /></label>
+      <label style={{ ...lS, flexDirection: "row", alignItems: "center", gap: 8, cursor: "pointer" }}>
+        <input type="checkbox" checked={isLead} onChange={(e) => setIsLead(e.target.checked)} style={{ accentColor: t.accent }} />
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>장급 — 부팀장/팀장/실장 <LuIcon name="star" size={10} sw={2} color="#f9a825" fill="#f9a825" /></span>
+      </label>
+      <button onClick={() => onSave({ team, name: name.trim(), isLead })}
+        style={{ width: "100%", padding: 12, background: t.btnBg, border: "none", borderRadius: 8, color: t.btnFg, cursor: "pointer", fontWeight: 700, fontSize: 14, marginTop: 6 }}>저장</button>
+    </div>
+  );
+}
+
+function DeviceEditForm({ t, device, allMembers, onSave, onDelete }) {
+  const [f, setF] = useState({ ...device });
+  const up = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const iS = { width: "100%", padding: "8px 10px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.text, borderRadius: 7, fontSize: 13, marginTop: 4, boxSizing: "border-box", outline: "none" };
+  const lS = { fontSize: 11, color: t.textDim, display: "flex", flexDirection: "column", marginBottom: 10 };
+  const teamList = [...Object.keys(SEAT_TEAM_COLORS), "개발지원팀"];
+  return (
+    <div>
+      <label style={lS}>기종
+        <input value={f.model} onChange={e => up("model", e.target.value)} style={iS} autoFocus placeholder="기기 모델명" />
+      </label>
+      <label style={lS}>팀
+        <select value={f.team} onChange={e => up("team", e.target.value)} style={{ ...iS, cursor: "pointer" }}>
+          <option value="">공란</option>
+          {teamList.map(tn => <option key={tn} value={tn}>{tn}</option>)}
+        </select>
+      </label>
+      <label style={lS}>보유자
+        <select value={f.holder} onChange={e => up("holder", e.target.value)} style={{ ...iS, cursor: "pointer" }}>
+          <option value="">공란</option>
+          {allMembers.map((m, i) => <option key={i} value={m.name}>{m.team} — {m.name}</option>)}
+        </select>
+      </label>
+      <label style={lS}>반납여부
+        <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+          {[false, true].map(v => (
+            <button key={String(v)} onClick={() => { up("returned", v); if (!v) up("returnDate", ""); }}
+              style={{ flex: 1, padding: "8px 0", background: f.returned === v ? t.accent : t.inputBg, border: `1.5px solid ${f.returned === v ? t.accent : t.inputBorder}`, borderRadius: 6, color: f.returned === v ? "#fff" : t.textDim, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+              {v ? "반납" : "미반납"}
+            </button>
+          ))}
+        </div>
+      </label>
+      {f.returned && (
+        <label style={lS}>반납일자
+          <input type="date" value={f.returnDate} onChange={e => up("returnDate", e.target.value)} style={iS} />
+        </label>
+      )}
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <button onClick={() => { if (f.model.trim()) onSave(f); }}
+          style={{ flex: 1, padding: 10, background: t.btnBg, border: "none", borderRadius: 8, color: t.btnFg, cursor: "pointer", fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><LuIcon name="save" size={14} />저장</button>
+        {onDelete && <button onClick={onDelete}
+          style={{ padding: "10px 16px", background: "transparent", border: `1px solid ${t.deleteBg}`, borderRadius: 8, color: t.deleteBg, cursor: "pointer", fontWeight: 600, fontSize: 12 }}>삭제</button>}
+      </div>
+    </div>
+  );
+}
+
+function ToEditForm({ t, row, currentCount, onSave }) {
+  const [f, setF] = useState({ ...row });
+  const up = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const iS = { width: "100%", padding: "8px 10px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.text, borderRadius: 7, fontSize: 13, marginTop: 4, boxSizing: "border-box", outline: "none" };
+  const lS = { fontSize: 11, color: t.textDim, display: "flex", flexDirection: "column", marginBottom: 10 };
+  return (
+    <div>
+      <label style={lS}>팀 <input value={f.label} disabled style={{ ...iS, opacity: 0.6 }} /></label>
+      <label style={lS}>현재 인원 <input value={currentCount} disabled style={{ ...iS, opacity: 0.6 }} /></label>
+      <label style={lS}>입사예정 <input type="number" min={0} value={f.incoming} onChange={e => up("incoming", parseInt(e.target.value) || 0)} style={iS} /></label>
+      <label style={lS}>추가모집 <input type="number" min={0} value={f.recruiting} onChange={e => up("recruiting", parseInt(e.target.value) || 0)} style={iS} /></label>
+      <label style={lS}>비고 <input value={f.note} onChange={e => up("note", e.target.value)} style={iS} placeholder="비고 입력" /></label>
+      <button onClick={() => onSave(f)}
+        style={{ width: "100%", padding: 10, background: t.btnBg, border: "none", borderRadius: 8, color: t.btnFg, cursor: "pointer", fontWeight: 700, fontSize: 13, marginTop: 4 }}>저장</button>
+    </div>
+  );
+}
