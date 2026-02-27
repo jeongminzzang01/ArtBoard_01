@@ -95,6 +95,10 @@ const ICON_DATA = {
   eyeOff: [["path",{d:"M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"}],["path",{d:"M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"}],["line",{x1:2,x2:22,y1:2,y2:22}]],
   star: [["polygon",{points:"12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"}]],
   shield: [["path",{d:"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"}]],
+  download: [["path",{d:"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"}],["polyline",{points:"7 10 12 15 17 10"}],["line",{x1:12,x2:12,y1:15,y2:3}]],
+  upload: [["path",{d:"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"}],["polyline",{points:"17 8 12 3 7 8"}],["line",{x1:12,x2:12,y1:3,y2:15}]],
+  chevronLeft: [["path",{d:"m15 18-6-6 6-6"}]],
+  externalLink: [["path",{d:"M15 3h6v6"}],["path",{d:"M10 14 21 3"}],["path",{d:"M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"}]],
 };
 const LuIcon = ({ name, size = 16, sw = 1.5, color = "currentColor", fill, style, ...props }) => {
   const d = ICON_DATA[name];
@@ -157,6 +161,8 @@ function genThursdays(months) {
 }
 
 const DEFAULT_CELL_W = 32, DEFAULT_CELL_H = 34, DEFAULT_LEFT_W = 190, TEAM_W_RATIO = 0.37;
+const UPDATE_COLS_MOBILE = [{t:"월"},{t:"업데이트"},{t:"항목"},{t:"미정"}];
+const UPDATE_COLS_DESKTOP = [{t:"월"},{t:"업데이트"},{t:"항목"},{t:"미정"},{t:"아트 마감",ic:"palette",cnt:"art"},{t:"1차 통머지",ic:"gitMerge",cnt:"first"},{t:"마지막 통머지",ic:"rocket",cnt:"last"}];
 const RADIUS = { sm: 6, md: 8, lg: 12 };
 const EMAIL_DOMAIN = "@madngine.com";
 const ZOOM_LEVELS = [
@@ -295,9 +301,10 @@ const INIT_UPDATE = (() => {
       return;
     }
     const d = entry.date;
-    if (!data[d]) data[d] = { items: [], itemTeams: [], milestone: "", firstMerge: "", lastMerge: "" };
+    if (!data[d]) data[d] = { items: [], itemTeams: [], itemJiras: [], milestone: "", firstMerge: "", lastMerge: "" };
     data[d].items.push(entry.item);
     data[d].itemTeams.push(entry.teams || []);
+    data[d].itemJiras.push(entry.jira || "");
     if (entry.milestone && !data[d].milestone) data[d].milestone = entry.milestone;
     if (entry.remark) {
       const year = parseInt(d.split("-")[0]);
@@ -315,30 +322,37 @@ const INIT_UPDATE = (() => {
   return { data, pending };
 })();
 
+// ─── localStorage 자동 저장 ───
+const STORAGE_KEY = "artboard_data_v1";
+const loadStorage = () => { try { const r = localStorage.getItem(STORAGE_KEY); return r ? JSON.parse(r) : null; } catch { return null; } };
+const saveStorage = (d) => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); } catch {} };
+
 function ArtSchedule() {
-  const [mode, setMode] = useState("dark");
+  const _stored = useMemo(() => loadStorage(), []);
+  const [mode, setMode] = useState(_stored?.mode || "dark");
   const t = themes[mode];
   const [tab, setTab] = useState("schedule");
 
-  const [teams, setTeams] = useState(INIT_TEAMS);
-  const [milestones, setMilestones] = useState(() => INIT_MS.map(m => ({ ...m, status: m.status || "upcoming" })));
-  const [tasks, setTasks] = useState(INIT_TASKS);
-  const [customHolidays, setCustomHolidays] = useState([]);
+  const [teams, setTeams] = useState(_stored?.teams || INIT_TEAMS);
+  const [milestones, setMilestones] = useState(() => _stored?.milestones || INIT_MS.map(m => ({ ...m, status: m.status || "upcoming" })));
+  const [tasks, setTasks] = useState(_stored?.tasks || INIT_TASKS);
+  const [customHolidays, setCustomHolidays] = useState(_stored?.customHolidays || []);
 
   const [displayMonths, setDisplayMonths] = useState(() => {
+    if (_stored?.displayMonths) return _stored.displayMonths;
     const m = [];
     for (let i = 0; i < 12; i++) m.push({ year: 2025, month: i });
     for (let i = 0; i < 12; i++) m.push({ year: 2026, month: i });
     return m;
   });
 
-  const [updateData, setUpdateData] = useState(INIT_UPDATE.data);
+  const [updateData, setUpdateData] = useState(_stored?.updateData || INIT_UPDATE.data);
   const [editingUpdate, setEditingUpdate] = useState(null);
-  const [hiddenUpdateDates, setHiddenUpdateDates] = useState([]);
-  const [showPastUpdates, setShowPastUpdates] = useState(false);
+  const [hiddenUpdateDates, setHiddenUpdateDates] = useState(_stored?.hiddenUpdateDates || []);
+  const [showPastUpdates, setShowPastUpdates] = useState(_stored?.showPastUpdates || false);
   const [updateSelect, setUpdateSelect] = useState(null);
   const updateDragRef = useRef(null);
-  const [pendingByMonth, setPendingByMonth] = useState(INIT_UPDATE.pending);
+  const [pendingByMonth, setPendingByMonth] = useState(_stored?.pendingByMonth || INIT_UPDATE.pending);
   const [updateWide, setUpdateWide] = useState(false);
   const [updateTeamFilter, setUpdateTeamFilter] = useState("전체");
   const [dragItem, setDragItem] = useState(null);
@@ -365,22 +379,30 @@ function ArtSchedule() {
   const [editingMember, setEditingMember] = useState(null);
   const [draggingTaskId, setDraggingTaskId] = useState(null);
   const [dragOverMemberId, setDragOverMemberId] = useState(null);
-  const [collapsedTeams, setCollapsedTeams] = useState([]);
+  const [collapsedTeams, setCollapsedTeams] = useState(_stored?.collapsedTeams || []);
   const [memberDrag, setMemberDrag] = useState(null);
   const [memberDragOver, setMemberDragOver] = useState(null);
+  const [viewMode, setViewMode] = useState("full");
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [taskDrag, setTaskDrag] = useState(null);
+  const taskDragRef = useRef(null);
+  const taskDragStartCol = useRef(0);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const [appHeight, setAppHeight] = useState(() => window.innerHeight);
+  const [winWidth, setWinWidth] = useState(() => window.innerWidth);
   useEffect(() => {
-    const onResize = () => { setIsMobile(window.innerWidth < 768); setAppHeight(window.innerHeight); };
+    const onResize = () => { setIsMobile(window.innerWidth < 768); setAppHeight(window.innerHeight); setWinWidth(window.innerWidth); };
+    const onOrientation = () => setTimeout(onResize, 100);
     window.addEventListener("resize", onResize);
-    window.addEventListener("orientationchange", () => setTimeout(onResize, 100));
-    return () => { window.removeEventListener("resize", onResize); };
+    window.addEventListener("orientationchange", onOrientation);
+    return () => { window.removeEventListener("resize", onResize); window.removeEventListener("orientationchange", onOrientation); };
   }, []);
   const [zoomIdx, setZoomIdx] = useState(() => window.innerWidth < 768 ? 0 : 1);
   const zoom = ZOOM_LEVELS[zoomIdx];
-  const CELL_W = zoom.cellW, CELL_H = zoom.cellH;
+  const _baseCellW = zoom.cellW, CELL_H = zoom.cellH;
 
   const [hiddenDates, setHiddenDates] = useState(() => {
+    if (_stored?.hiddenDates) return _stored.hiddenDates;
     const h = [];
     const cutoff = new Date(2026, 0, 31);
     for (let y = 2025; y <= 2026; y++) {
@@ -397,17 +419,17 @@ function ArtSchedule() {
     return h;
   });
   const [headerSelect, setHeaderSelect] = useState(null);
-  const [seatData, setSeatData] = useState(INITIAL_SEAT_DATA);
+  const [seatData, setSeatData] = useState(_stored?.seatData || INITIAL_SEAT_DATA);
   const [editingSeat, setEditingSeat] = useState(null);
   const [seatSwapConfirm, setSeatSwapConfirm] = useState(null);
   const seatDragRef = useRef(null);
 
   // ─── 기기/TO 현황 상태 ───
-  const [devices, setDevices] = useState(INIT_DEVICES);
+  const [devices, setDevices] = useState(_stored?.devices || INIT_DEVICES);
   const [editingDevice, setEditingDevice] = useState(null);
-  const [toData, setToData] = useState(INIT_TO_DATA);
+  const [toData, setToData] = useState(_stored?.toData || INIT_TO_DATA);
   const [editingTo, setEditingTo] = useState(null);
-  const [deadlineMsId, setDeadlineMsId] = useState(null);
+  const [deadlineMsId, setDeadlineMsId] = useState(_stored?.deadlineMsId || null);
   const undoStack = useRef([]);
   const [changeLog, setChangeLog] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -458,7 +480,26 @@ function ArtSchedule() {
 
   const allDates = useMemo(() => genMonthDates(displayMonths), [displayMonths]);
   const hiddenSet = useMemo(() => new Set(hiddenDates), [hiddenDates]);
-  const dates = useMemo(() => hiddenDates.length === 0 ? allDates : allDates.filter(d => !hiddenSet.has(fmt(d))), [allDates, hiddenDates, hiddenSet]);
+  const allVisibleDates = useMemo(() => hiddenDates.length === 0 ? allDates : allDates.filter(d => !hiddenSet.has(fmt(d))), [allDates, hiddenDates, hiddenSet]);
+  const weekDates = useMemo(() => {
+    if (viewMode !== "week") return null;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const dow = today.getDay();
+    const monday = new Date(today); monday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1) + weekOffset * 7);
+    const days = [];
+    for (let i = 0; i < 5; i++) { const d = new Date(monday); d.setDate(monday.getDate() + i); days.push(fmt(d)); }
+    return new Set(days);
+  }, [viewMode, weekOffset]);
+  const dates = useMemo(() => {
+    if (viewMode === "week" && weekDates) return allVisibleDates.filter(d => weekDates.has(fmt(d)));
+    return allVisibleDates;
+  }, [allVisibleDates, viewMode, weekDates]);
+  const CELL_W = useMemo(() => {
+    if (viewMode !== "week" || dates.length === 0) return _baseCellW;
+    const histW = showHistory && !isMobile ? 220 : 0;
+    const available = winWidth - leftW - histW - 12;
+    return Math.max(_baseCellW, Math.floor(available / dates.length));
+  }, [viewMode, dates.length, _baseCellW, leftW, showHistory, isMobile, winWidth]);
   const thursdays = useMemo(() => genThursdays(displayMonths), [displayMonths]);
   const thursdaysByMonth = useMemo(() => {
     const g = []; let c = null;
@@ -472,21 +513,21 @@ function ArtSchedule() {
 
   const hiddenUpdateSet = useMemo(() => new Set(hiddenUpdateDates), [hiddenUpdateDates]);
   const pastThursdayCount = useMemo(() => thursdays.filter(d => hiddenSet.has(fmt(d))).length, [thursdays, hiddenSet]);
-  const visibleThursdays = useMemo(() => thursdays.filter(d => {
-    const ds = fmt(d);
-    if (hiddenUpdateSet.has(ds)) return false;
-    if (!showPastUpdates && hiddenSet.has(ds)) return false;
-    return true;
-  }), [thursdays, hiddenSet, hiddenUpdateSet, showPastUpdates]);
-  const visibleThursdaysByMonth = useMemo(() => {
+  const { visibleThursdays, visibleThursdaysByMonth } = useMemo(() => {
+    const vt = thursdays.filter(d => {
+      const ds = fmt(d);
+      if (hiddenUpdateSet.has(ds)) return false;
+      if (!showPastUpdates && hiddenSet.has(ds)) return false;
+      return true;
+    });
     const g = []; let c = null;
-    visibleThursdays.forEach(d => {
+    vt.forEach(d => {
       const k = `${d.getFullYear()}-${d.getMonth()}`;
       if (!c || c.key !== k) { c = { key: k, year: d.getFullYear(), month: d.getMonth() + 1, dates: [] }; g.push(c); }
       c.dates.push(d);
     });
-    return g;
-  }, [visibleThursdays]);
+    return { visibleThursdays: vt, visibleThursdaysByMonth: g };
+  }, [thursdays, hiddenSet, hiddenUpdateSet, showPastUpdates]);
 
   const firstDateStr = useMemo(() => {
     if (displayMonths.length === 0) return fmt(new Date());
@@ -544,6 +585,7 @@ function ArtSchedule() {
   }, [dates, allDates]);
 
   const hiddenGaps = useMemo(() => {
+    if (viewMode === "week") return [];
     if (hiddenDates.length === 0) return [];
     const gaps = [];
     const allIdx = {};
@@ -610,6 +652,8 @@ function ArtSchedule() {
     }
   };
 
+  const taskCountByMember = useMemo(() => { const m = {}; tasks.forEach(tk => { m[tk.memberId] = (m[tk.memberId] || 0) + 1; }); return m; }, [tasks]);
+
   const saveTask = (task) => { pushUndo(task.id ? "일정 수정" : "일정 추가"); if (task.id) setTasks((p) => p.map((x) => x.id === task.id ? task : x)); else setTasks((p) => [...p, { ...task, id: "task_" + Date.now() }]); setShowTaskModal(false); setEditingTask(null); };
   const deleteTask = (id) => { pushUndo("일정 삭제"); setTasks((p) => p.filter((x) => x.id !== id)); setShowTaskModal(false); setEditingTask(null); };
   const saveMilestone = (ms) => {
@@ -626,7 +670,7 @@ function ArtSchedule() {
   const removeTeam = (teamId) => {
     const team = teams.find(x => x.id === teamId);
     const memberCount = team?.members.length || 0;
-    const taskCount = tasks.filter(tk => team?.members.some(m => m.id === tk.memberId)).length;
+    const taskCount = team?.members.reduce((sum, m) => sum + (taskCountByMember[m.id] || 0), 0) || 0;
     setConfirmDelete({
       title: "팀 삭제",
       message: `"${team?.name}" 팀을 삭제하시겠습니까?${memberCount > 0 ? `\n소속 인원 ${memberCount}명과 관련 일정 ${taskCount}건이 함께 삭제됩니다.` : ""}`,
@@ -641,7 +685,7 @@ function ArtSchedule() {
   const removeMember = (teamId, memberId) => {
     const team = teams.find(x => x.id === teamId);
     const member = team?.members.find(m => m.id === memberId);
-    const taskCount = tasks.filter(tk => tk.memberId === memberId).length;
+    const taskCount = taskCountByMember[memberId] || 0;
     setConfirmDelete({
       title: "인원 제거",
       message: `"${member?.name}"님을 제거하시겠습니까?${taskCount > 0 ? `\n관련 일정 ${taskCount}건이 함께 삭제됩니다.` : ""}`,
@@ -680,10 +724,36 @@ function ArtSchedule() {
     }
     setEditingMember(null);
   };
-  const handleTaskDragStart = (e, taskId) => { setDraggingTaskId(taskId); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", taskId); };
+  const handleTaskDragStart = (e, taskId) => {
+    setDraggingTaskId(taskId); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", taskId);
+    const grid = gridRef.current;
+    if (grid) { const gr = grid.getBoundingClientRect(); taskDragStartCol.current = Math.floor((e.clientX - gr.left + grid.scrollLeft) / CELL_W); }
+  };
   const handleTaskDragEnd = () => { setDraggingTaskId(null); setDragOverMemberId(null); };
   const handleRowDragOver = (e, memberId) => { if (!draggingTaskId) return; e.preventDefault(); e.stopPropagation(); setDragOverMemberId(memberId); };
-  const handleRowDrop = (e, memberId) => { e.preventDefault(); e.stopPropagation(); if (draggingTaskId && memberId) { const row = flatRows.find((r) => r.memberId === memberId); if (row && !row.isEmpty) { pushUndo("일정 이동"); setTasks((p) => p.map((x) => x.id === draggingTaskId ? { ...x, memberId } : x)); } } setDraggingTaskId(null); setDragOverMemberId(null); };
+  const handleRowDrop = (e, memberId) => {
+    e.preventDefault(); e.stopPropagation();
+    if (draggingTaskId && memberId) {
+      const row = flatRows.find((r) => r.memberId === memberId);
+      if (row && !row.isEmpty) {
+        const grid = gridRef.current;
+        let colDelta = 0;
+        if (grid) { const gr = grid.getBoundingClientRect(); const dropCol = Math.floor((e.clientX - gr.left + grid.scrollLeft) / CELL_W); colDelta = dropCol - taskDragStartCol.current; }
+        pushUndo("일정 이동");
+        setTasks((p) => p.map((x) => {
+          if (x.id !== draggingTaskId) return x;
+          let updated = { ...x, memberId };
+          if (colDelta !== 0) {
+            const sCol = dateToCol(x.startDate); const eCol = dateToCol(x.endDate);
+            const newS = sCol + colDelta; const newE = eCol + colDelta;
+            if (newS >= 0 && newE < dates.length) { updated.startDate = fmt(dates[newS]); updated.endDate = fmt(dates[newE]); }
+          }
+          return updated;
+        }));
+      }
+    }
+    setDraggingTaskId(null); setDragOverMemberId(null);
+  };
 
   const toArr = (v) => Array.isArray(v) ? v : (v ? v.split("\n").filter(Boolean) : []);
   const monthKey = (ds) => { const d = new Date(ds + "T00:00:00"); return `${d.getFullYear()}-${d.getMonth() + 1}`; };
@@ -731,6 +801,13 @@ function ArtSchedule() {
         ttArr.push(movedTeams);
         fe.itemTeams = ftArr;
         te.itemTeams = ttArr;
+        // move itemJiras in sync
+        const fjArr = [...(fe.itemJiras || [])];
+        const movedJira = fjArr.splice(index, 1)[0] || "";
+        const tjArr = [...(te.itemJiras || [])];
+        tjArr.push(movedJira);
+        fe.itemJiras = fjArr;
+        te.itemJiras = tjArr;
         next[fromKey] = fe;
         next[toKey] = te;
         return next;
@@ -800,9 +877,11 @@ function ArtSchedule() {
   }, [teams]);
 
   const toCurrentCount = useMemo(() => {
+    const teamMemberCount = {};
+    teams.forEach(tm => { teamMemberCount[tm.name] = tm.members.length; });
     const counts = {};
     toData.forEach(row => {
-      counts[row.id] = teams.filter(tm => row.teamNames.includes(tm.name)).reduce((sum, tm) => sum + tm.members.length, 0);
+      counts[row.id] = (row.teamNames || []).reduce((sum, tn) => sum + (teamMemberCount[tn] || 0), 0);
     });
     return counts;
   }, [teams, toData]);
@@ -814,13 +893,16 @@ function ArtSchedule() {
     if (!q) return null;
     const matchedTaskIds = new Set();
     const matchedMemberIds = new Set();
+    const memberTasks = {};
     tasks.forEach(tk => {
+      if (!memberTasks[tk.memberId]) memberTasks[tk.memberId] = [];
+      memberTasks[tk.memberId].push(tk.id);
       if (tk.title.toLowerCase().includes(q)) { matchedTaskIds.add(tk.id); matchedMemberIds.add(tk.memberId); }
     });
     teams.forEach(tm => tm.members.forEach(mb => {
       if (mb.name.toLowerCase().includes(q)) {
         matchedMemberIds.add(mb.id);
-        tasks.forEach(tk => { if (tk.memberId === mb.id) matchedTaskIds.add(tk.id); });
+        (memberTasks[mb.id] || []).forEach(tid => matchedTaskIds.add(tid));
       }
     }));
     return { taskIds: matchedTaskIds, memberIds: matchedMemberIds };
@@ -851,18 +933,20 @@ function ArtSchedule() {
   useEffect(() => {
     const h = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); undo(); }
-      if (e.key === "Escape") { setContextMenu(null); setHeaderSelect(null); }
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); exportData(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === "f") { e.preventDefault(); if (searchRef.current) searchRef.current.focus(); }
+      if (e.key === "Escape") { setContextMenu(null); setHeaderSelect(null); if (taskDrag) { taskDragRef.current = null; setTaskDrag(null); } }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [undo]);
+  }, [undo, exportData, taskDrag]);
   useEffect(() => {
     const g = gridRef.current; const hs = document.getElementById("hdr-scroll");
-    const handler = (e) => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.preventDefault(); const amt = e.deltaY; if (g) { g.scrollLeft += amt; } if (hs) { hs.scrollLeft = g ? g.scrollLeft : hs.scrollLeft + amt; } } };
+    const handler = (e) => { if (viewMode === "week") return; if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.preventDefault(); const amt = e.deltaY; if (g) { g.scrollLeft += amt; } if (hs) { hs.scrollLeft = g ? g.scrollLeft : hs.scrollLeft + amt; } } };
     if (g) g.addEventListener("wheel", handler, { passive: false });
     if (hs) hs.addEventListener("wheel", handler, { passive: false });
     return () => { if (g) g.removeEventListener("wheel", handler); if (hs) hs.removeEventListener("wheel", handler); };
-  }, [tab]);
+  }, [tab, viewMode]);
 
   useEffect(() => {
     const onUp = () => setHeaderSelect(p => (p && p.dragging) ? { ...p, dragging: false } : p);
@@ -877,6 +961,15 @@ function ArtSchedule() {
       setHeaderSelect(null);
     }
   }, [headerSelect, dates, toggleCustomHoliday]);
+
+  // ─── localStorage 자동 저장 ───
+  const saveTimer = useRef(null);
+  useEffect(() => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      saveStorage({ teams, tasks, milestones, customHolidays, updateData, pendingByMonth, seatData, hiddenDates, hiddenUpdateDates, showPastUpdates, devices, toData, mode, collapsedTeams, deadlineMsId, displayMonths });
+    }, 500);
+  }, [teams, tasks, milestones, customHolidays, updateData, pendingByMonth, seatData, hiddenDates, hiddenUpdateDates, showPastUpdates, devices, toData, mode, collapsedTeams, deadlineMsId, displayMonths]);
 
   useEffect(() => {
     const id = "artboard-scrollbar-style";
@@ -908,6 +1001,108 @@ function ArtSchedule() {
   }, []);
   const hideTooltip = useCallback(() => { if (tooltipTimer.current) clearTimeout(tooltipTimer.current); setTooltip(null); }, []);
 
+  // ─── 데이터 내보내기/가져오기 ───
+  const exportData = useCallback(() => {
+    const data = { version: 1, teams, tasks, milestones, customHolidays, updateData, pendingByMonth, seatData, hiddenDates, hiddenUpdateDates, showPastUpdates, devices, toData, displayMonths, mode, collapsedTeams, deadlineMsId, exportDate: new Date().toISOString() };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = `artboard_${fmt(new Date())}.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(() => URL.revokeObjectURL(url), 3000);
+  }, [teams, tasks, milestones, customHolidays, updateData, pendingByMonth, seatData, hiddenDates, hiddenUpdateDates, showPastUpdates, devices, toData, displayMonths, mode, collapsedTeams, deadlineMsId]);
+
+  const importData = useCallback(() => {
+    const input = document.createElement("input"); input.type = "file"; input.accept = ".json";
+    input.onchange = (ev) => {
+      const file = ev.target.files[0]; if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (re) => {
+        try {
+          const d = JSON.parse(re.target.result);
+          pushUndo("데이터 가져오기");
+          if (d.teams) setTeams(d.teams);
+          if (d.tasks) setTasks(d.tasks);
+          if (d.milestones) setMilestones(d.milestones);
+          if (d.customHolidays) setCustomHolidays(d.customHolidays);
+          if (d.updateData) setUpdateData(d.updateData);
+          if (d.pendingByMonth) setPendingByMonth(d.pendingByMonth);
+          if (d.seatData) setSeatData(d.seatData);
+          if (d.hiddenDates) setHiddenDates(d.hiddenDates);
+          if (d.hiddenUpdateDates) setHiddenUpdateDates(d.hiddenUpdateDates);
+          if (d.showPastUpdates !== undefined) setShowPastUpdates(d.showPastUpdates);
+          if (d.devices) setDevices(d.devices);
+          if (d.toData) setToData(d.toData);
+          if (d.displayMonths) setDisplayMonths(d.displayMonths);
+          if (d.mode) setMode(d.mode);
+          if (d.collapsedTeams) setCollapsedTeams(d.collapsedTeams);
+          if (d.deadlineMsId !== undefined) setDeadlineMsId(d.deadlineMsId);
+        } catch { alert("잘못된 파일 형식입니다."); }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  }, [pushUndo]);
+
+  // ─── 드래그로 일정 이동/리사이즈 ───
+  const startTaskResize = useCallback((e, task, type) => {
+    if (isMobile || e.button !== 0) return;
+    const grid = gridRef.current; if (!grid) return;
+    const gridRect = grid.getBoundingClientRect();
+    const mouseCol = Math.floor((e.clientX - gridRect.left + grid.scrollLeft) / CELL_W);
+    taskDragRef.current = { taskId: task.id, type, startMouseCol: mouseCol, origStart: task.startDate, origEnd: task.endDate };
+    const isMove = type === "move";
+    if (!isMove) setTaskDrag({ taskId: task.id, delta: 0 });
+    const startX = e.clientX;
+    let dragStarted = !isMove;
+    const onMove = (ev) => {
+      const gr = gridRef.current; if (!gr) return;
+      if (!dragStarted) { if (Math.abs(ev.clientX - startX) < 4) return; dragStarted = true; setTaskDrag({ taskId: taskDragRef.current.taskId, delta: 0 }); }
+      const mc = Math.max(0, Math.min(dates.length - 1, Math.floor((ev.clientX - gr.getBoundingClientRect().left + gr.scrollLeft) / CELL_W)));
+      const delta = mc - taskDragRef.current.startMouseCol;
+      setTaskDrag({ taskId: taskDragRef.current.taskId, delta });
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      if (!dragStarted) { taskDragRef.current = null; setEditingTask(task); setShowTaskModal(true); return; }
+      setTimeout(() => {
+        const td = taskDragRef.current;
+        setTaskDrag(prev => {
+          if (!prev || !td) { taskDragRef.current = null; return null; }
+          if (prev.delta === 0) { taskDragRef.current = null; return null; }
+          const origSCol = dateToCol(td.origStart);
+          const origECol = dateToCol(td.origEnd);
+          let newSCol, newECol;
+          if (td.type === "move") { newSCol = origSCol + prev.delta; newECol = origECol + prev.delta; }
+          else if (td.type === "resizeLeft") { newSCol = origSCol + prev.delta; newECol = origECol; }
+          else { newSCol = origSCol; newECol = origECol + prev.delta; }
+          if (newSCol >= 0 && newECol < dates.length && newSCol <= newECol) {
+            pushUndo(td.type === "move" ? "일정 이동" : "일정 크기 변경");
+            setTasks(p => p.map(tk => tk.id === td.taskId ? { ...tk, startDate: fmt(dates[newSCol]), endDate: fmt(dates[newECol]) } : tk));
+          }
+          taskDragRef.current = null;
+          return null;
+        });
+      }, 0);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    e.preventDefault(); e.stopPropagation();
+  }, [isMobile, CELL_W, dates, dateToCol, pushUndo]);
+
+  // ─── 주간 뷰 토글 ───
+  const toggleWeekView = useCallback(() => {
+    setViewMode(p => {
+      if (p === "full") { setWeekOffset(0); if (zoomIdx < 2) setZoomIdx(2); return "week"; }
+      return "full";
+    });
+  }, [zoomIdx]);
+
+  const weekLabel = useMemo(() => {
+    if (viewMode !== "week" || !weekDates) return "";
+    const arr = [...weekDates].sort();
+    if (arr.length === 0) return "";
+    return `${fmtDateKR(arr[0])} ~ ${fmtDateKR(arr[arr.length - 1])}`;
+  }, [viewMode, weekDates]);
+
   const monthGroups = useMemo(() => {
     const g = []; let c = null;
     dates.forEach((d, i) => { const k = `${d.getFullYear()}-${d.getMonth()}`; if (!c || c.key !== k) { c = { key: k, year: d.getFullYear(), month: d.getMonth() + 1, start: i, count: 1 }; g.push(c); } else c.count++; });
@@ -923,6 +1118,17 @@ function ArtSchedule() {
       return { ...ms, sCol: s, eCol: e };
     }).filter(Boolean);
   }, [milestones, dates]);
+
+  // 마일스톤 자동 라이브 전환: 오늘이 endDate를 지나면 자동으로 live
+  useEffect(() => {
+    const today = todayStr;
+    let changed = false;
+    const updated = milestones.map(ms => {
+      if (ms.status !== "live" && ms.endDate < today) { changed = true; return { ...ms, status: "live" }; }
+      return ms;
+    });
+    if (changed) setMilestones(updated);
+  }, [todayStr]);
 
   const teamSections = useMemo(() => {
     let off = 0;
@@ -949,6 +1155,16 @@ function ArtSchedule() {
 
   const lastM = displayMonths[displayMonths.length - 1];
   const monthLabel = `${displayMonths[0].year}.${displayMonths[0].month + 1} ~ ${lastM.year}.${lastM.month + 1}`;
+
+  const openNewMilestone = useCallback((startHint) => {
+    let mx = 0; milestones.forEach(m => { const mt = m.name.match(/^M(\d+)$/); if (mt) mx = Math.max(mx, +mt[1]); });
+    let newStart = startHint;
+    if (!newStart) {
+      if (milestones.length > 0) { const lastEnd = milestones.reduce((max, m) => m.endDate > max ? m.endDate : max, ""); let d = addDays(new Date(lastEnd), 1); while (isWeekend(d)) d = addDays(d, 1); newStart = fmt(d); }
+      else { newStart = firstDateStr; }
+    }
+    setEditingMilestone({ id: null, name: `M${mx + 1}`, startDate: newStart, endDate: fmt(addDays(new Date(newStart), 28)), status: "upcoming" }); setShowMilestoneModal(true);
+  }, [milestones, firstDateStr]);
 
   const tabBtn = (id, label, iconName) => (
     <button key={id} onClick={() => setTab(id)} title={label}
@@ -991,13 +1207,7 @@ function ArtSchedule() {
         </>}
         {tab === "schedule" && <>
           {!isMobile && <Sep t={t} />}
-          <button onClick={() => {
-            let mx = 0; milestones.forEach(m => { const mt = m.name.match(/^M(\d+)$/); if (mt) mx = Math.max(mx, +mt[1]); });
-            let newStart;
-            if (milestones.length > 0) { const lastEnd = milestones.reduce((max, m) => m.endDate > max ? m.endDate : max, ""); let d = addDays(new Date(lastEnd), 1); while (isWeekend(d)) d = addDays(d, 1); newStart = fmt(d); }
-            else { newStart = firstDateStr; }
-            setEditingMilestone({ id: null, name: `M${mx + 1}`, startDate: newStart, endDate: fmt(addDays(new Date(newStart), 28)), status: "upcoming" }); setShowMilestoneModal(true);
-          }} style={btn(t.btnBg, t.btnFg)} title="마일스톤"><LuIcon name="flag" size={14} />{!isMobile && " 마일스톤"}</button>
+          <button onClick={() => openNewMilestone()} style={btn(t.btnBg, t.btnFg)} title="마일스톤"><LuIcon name="flag" size={14} />{!isMobile && " 마일스톤"}</button>
           <button onClick={() => { setTeamModalMode("add"); setShowTeamModal(true); }} style={btn(t.btnBg, t.btnFg)} title="팀 추가"><LuIcon name="users" size={14} />{!isMobile && " 팀 추가"}</button>
         </>}
         <div style={{ flex: 1 }} />
@@ -1018,6 +1228,16 @@ function ArtSchedule() {
           </div>
         )}
         {tab === "schedule" && <button onClick={scrollToToday} style={{ ...btn(t.btnBg, t.btnFg), padding: "3px 10px", fontSize: 11, fontWeight: 700, border: `1px solid ${t.btnBg}` }} title="오늘"><LuIcon name="calendarCheck" size={14} />{!isMobile && " 오늘"}</button>}
+        {tab === "schedule" && !isMobile && (
+          <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+            <button onClick={toggleWeekView} title={viewMode === "week" ? "전체 보기" : "주간 보기"} style={{ ...btn(t.btnBg, t.btnFg), padding: "3px 10px", fontSize: 11, fontWeight: 700, border: `1px solid ${t.btnBg}` }}><LuIcon name={viewMode === "week" ? "calendar" : "layoutGrid"} size={14} /> {viewMode === "week" ? "주간" : "전체"}</button>
+            {viewMode === "week" && <>
+              <button onClick={() => setWeekOffset(p => p - 1)} style={{ ...btn(t.border, t.text), padding: "3px 6px", border: `1px solid ${t.border}` }}><LuIcon name="chevronLeft" size={14} /></button>
+              <span style={{ fontSize: 10, color: t.text, minWidth: 100, textAlign: "center", fontWeight: 600 }}>{weekLabel}</span>
+              <button onClick={() => setWeekOffset(p => p + 1)} style={{ ...btn(t.border, t.text), padding: "3px 6px", border: `1px solid ${t.border}` }}><LuIcon name="chevronRight" size={14} /></button>
+            </>}
+          </div>
+        )}
         {tab === "schedule" && !isMobile && <div style={{ display: "flex", alignItems: "center", gap: 3, marginRight: 4 }}>
           <button onClick={() => setZoomIdx(p => Math.max(0, p - 1))} disabled={zoomIdx === 0} title="축소" style={{ ...btn(t.border, t.text), padding: "3px 8px", fontSize: 11, border: `1px solid ${t.border}`, opacity: zoomIdx === 0 ? .3 : 1 }}><LuIcon name="minus" size={12} /></button>
           <span style={{ fontSize: 10, color: t.textDim, minWidth: 20, textAlign: "center" }}>{zoom.label}</span>
@@ -1036,6 +1256,8 @@ function ArtSchedule() {
           <LuIcon name={mode === "dark" ? "sun" : "moon"} size={16} />
         </button>
         <button onClick={undo} disabled={undoStack.current.length === 0} title="실행취소 (Ctrl+Z)" style={{ ...btn(t.border, t.text), padding: "3px 10px", border: `1px solid ${t.border}`, opacity: undoStack.current.length === 0 ? .3 : 1 }}><LuIcon name="undo2" size={14} /></button>
+        {!isMobile && <button onClick={exportData} title="내보내기 (Ctrl+S)" style={{ ...btn(t.border, t.text), padding: "3px 10px", border: `1px solid ${t.border}` }}><LuIcon name="save" size={14} /></button>}
+        {!isMobile && <button onClick={importData} title="가져오기" style={{ ...btn(t.border, t.text), padding: "3px 10px", border: `1px solid ${t.border}` }}><LuIcon name="upload" size={14} /></button>}
         <button onClick={() => setShowHistory(p => !p)} style={{ ...btn(showHistory ? t.btnBg : t.border, showHistory ? t.btnFg : t.text), padding: "3px 10px", fontSize: 10, border: `1px solid ${showHistory ? t.btnBg : t.border}` }}><LuIcon name="history" size={14} />{!isMobile && ` 기록 ${changeLog.length > 0 ? `(${changeLog.length})` : ""}`}</button>
       </div>
 
@@ -1049,8 +1271,8 @@ function ArtSchedule() {
           {/* 좌측 패널 */}
           <div style={{ width: leftW, flexShrink: 0, borderRight: `2px solid ${t.border}`, display: "flex", flexDirection: "column", background: t.panelBg, position: "relative" }}>
             <div style={{ height: 70, borderBottom: `2px solid ${t.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: t.accent, background: t.headerBg }}>팀 / 담당자</div>
-            <div onClick={() => { let mx = 0; milestones.forEach(m => { const mt = m.name.match(/^M(\d+)$/); if (mt) mx = Math.max(mx, +mt[1]); }); let newStart; if (milestones.length > 0) { const lastEnd = milestones.reduce((max, m) => m.endDate > max ? m.endDate : max, ""); let d = addDays(new Date(lastEnd), 1); while (isWeekend(d)) d = addDays(d, 1); newStart = fmt(d); } else { newStart = firstDateStr; } setEditingMilestone({ id: null, name: `M${mx + 1}`, startDate: newStart, endDate: fmt(addDays(new Date(newStart), 28)), status: "upcoming" }); setShowMilestoneModal(true); }} style={{ height: 26, borderBottom: `1px solid ${t.border}`, display: "flex", alignItems: "center", paddingLeft: 8, fontSize: 10, color: t.textDim, background: t.headerBg, cursor: "pointer" }} title="클릭하여 마일스톤 추가">마일스톤 <LuIcon name="plus" size={10} style={{ marginLeft: 4, opacity: 0.5 }} /></div>
-            <div ref={leftBodyRef} style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }} onScroll={() => syncScroll("left")}>
+            <div onClick={() => openNewMilestone()} style={{ height: 26, borderBottom: `1px solid ${t.border}`, display: "flex", alignItems: "center", paddingLeft: 8, fontSize: 10, color: t.textDim, background: t.headerBg, cursor: "pointer" }} title="클릭하여 마일스톤 추가">마일스톤 <LuIcon name="plus" size={10} style={{ marginLeft: 4, opacity: 0.5 }} /></div>
+            <div ref={leftBodyRef} style={{ flex: 1, overflowY: "hidden", overflowX: "hidden" }}>
               {teamSections.map(({ team, idx: tIdx }) => {
                 const isDragOver = teamDragOverIdx === tIdx && teamDragIdx !== tIdx;
                 const collapsed = collapsedTeams.includes(team.id);
@@ -1120,14 +1342,25 @@ function ArtSchedule() {
                   {dates.map((d, i) => { const hol = getHoliday(d); const isCustom = customHolidays.includes(fmt(d)); const isToday = fmt(d) === todayStr; const isSel = headerSelect && headerSelect.startIdx !== headerSelect.endIdx && i >= Math.min(headerSelect.startIdx, headerSelect.endIdx) && i <= Math.max(headerSelect.startIdx, headerSelect.endIdx); return <div key={i} title={hol || "클릭하여 휴무일 지정"} onClick={(e) => { e.stopPropagation(); setHeaderSelect(null); toggleCustomHoliday(d); }} style={{ width: CELL_W, textAlign: "center", fontSize: 11, lineHeight: "24px", color: isSel ? "#fff" : isToday ? "#fff" : hol ? t.holidayText : t.text, background: isSel ? t.accent + "88" : hol ? t.holidayBg : t.headerBg, borderRight: `1px solid ${t.border}`, fontWeight: isToday ? 800 : hol ? 700 : 600, cursor: KOREAN_HOLIDAYS[fmt(d)] ? "default" : "pointer", borderBottom: isCustom ? `2px solid ${t.accentAlt}` : "none", position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>{isToday ? <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 20, height: 20, borderRadius: "50%", background: t.accentAlt, color: "#fff", fontSize: 11, fontWeight: 800, lineHeight: 1 }}>{d.getDate()}</span> : d.getDate()}</div>; })}
                   {hiddenGaps.map((gap, gi) => <div key={`ng${gi}`} onClick={(e) => { e.stopPropagation(); unhideGap(gap.afterIdx); }} style={{ position: "absolute", left: gap.pos - 8, top: 2, width: 16, height: 20, background: t.accentAlt, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, color: "#fff", fontWeight: 700, cursor: "pointer", zIndex: 20, opacity: 0.7 }} title={`${gap.count}일 숨김 - 클릭하여 표시`}>{gap.count}</div>)}
                 </div>
-                <div onClick={(e) => { const ci = Math.floor((e.nativeEvent.offsetX != null ? e.nativeEvent.offsetX : (e.clientX - e.currentTarget.getBoundingClientRect().left)) / CELL_W); if (ci >= 0 && ci < dates.length) { const clickDate = fmt(dates[ci]); let mx = 0; milestones.forEach(m => { const mt = m.name.match(/^M(\d+)$/); if (mt) mx = Math.max(mx, +mt[1]); }); setEditingMilestone({ id: null, name: `M${mx + 1}`, startDate: clickDate, endDate: fmt(addDays(new Date(clickDate), 28)), status: "upcoming" }); setShowMilestoneModal(true); } }} style={{ height: 26, position: "relative", borderBottom: `1px solid ${t.border}`, width: dates.length * CELL_W, backgroundImage: `repeating-linear-gradient(to right, transparent, transparent ${CELL_W - 1}px, ${t.border}22 ${CELL_W - 1}px, ${t.border}22 ${CELL_W}px)`, cursor: "pointer" }}>
+                <div onClick={(e) => { const ci = Math.floor((e.nativeEvent.offsetX != null ? e.nativeEvent.offsetX : (e.clientX - e.currentTarget.getBoundingClientRect().left)) / CELL_W); if (ci >= 0 && ci < dates.length) openNewMilestone(fmt(dates[ci])); }} style={{ height: 26, position: "relative", borderBottom: `1px solid ${t.border}`, width: dates.length * CELL_W, backgroundImage: `repeating-linear-gradient(to right, transparent, transparent ${CELL_W - 1}px, ${t.border}22 ${CELL_W - 1}px, ${t.border}22 ${CELL_W}px)`, cursor: "pointer" }}>
                   {(() => { const ti = dateToCol(todayStr); return ti >= 0 ? <div style={{ position: "absolute", left: ti * CELL_W + Math.floor(CELL_W / 2) - 1, top: 0, width: 0, height: 26, borderLeft: `2px dashed ${t.accentAlt}`, opacity: 0.45, pointerEvents: "none", zIndex: 2 }} /> : null; })()}
                   {milestonePositions.map((ms) => {
                     const mst = MILESTONE_STATUS[ms.status] || MILESTONE_STATUS.upcoming;
                     const msBg = mode === "dark" ? mst.bg : mst.bgLight;
+                    const progress = (() => {
+                      const todayCol = dateToCol(todayStr);
+                      if (todayCol < ms.sCol) return 0;
+                      if (todayCol > ms.eCol) return 100;
+                      const total = ms.eCol - ms.sCol + 1;
+                      const elapsed = todayCol - ms.sCol + 1;
+                      return Math.round((elapsed / total) * 100);
+                    })();
                     return (
                       <div key={ms.id} onClick={(e) => { e.stopPropagation(); setEditingMilestone(ms); setShowMilestoneModal(true); }}
-                        style={{ position: "absolute", top: 3, left: ms.sCol * CELL_W + 2, width: (ms.eCol - ms.sCol + 1) * CELL_W - 4, height: 20, background: msBg, borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: mode === "dark" ? "#c0c4cc" : "#fff", cursor: "pointer", boxShadow: `0 2px 8px ${t.shadowColor}`, letterSpacing: 1 }}>{ms.name}</div>
+                        style={{ position: "absolute", top: 3, left: ms.sCol * CELL_W + 2, width: (ms.eCol - ms.sCol + 1) * CELL_W - 4, height: 20, background: msBg, borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: mode === "dark" ? "#c0c4cc" : "#fff", cursor: "pointer", boxShadow: `0 2px 8px ${t.shadowColor}`, letterSpacing: 1, overflow: "hidden" }}>
+                        {progress > 0 && progress < 100 && <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${progress}%`, background: "rgba(255,255,255,0.15)", borderRadius: "5px 0 0 5px" }} />}
+                        <span style={{ position: "relative", zIndex: 1 }}>{ms.name}{ms.status !== "live" && progress > 0 && progress < 100 ? ` ${progress}%` : ""}</span>
+                      </div>
                     );
                   })}
                 </div>
@@ -1157,16 +1390,29 @@ function ArtSchedule() {
                   const rIdx = memberRowMap.get(task.memberId); if (rIdx === undefined) return null;
                   const sCol = dateToCol(task.startDate), eCol = dateToCol(task.endDate);
                   if (sCol < 0 && eCol < 0) return null;
-                  const aS = Math.max(sCol, 0), aE = Math.min(eCol, dates.length - 1); if (aS > aE) return null;
+                  let aS = Math.max(sCol, 0), aE = Math.min(eCol, dates.length - 1); if (aS > aE) return null;
+                  const td = taskDrag && taskDrag.taskId === task.id ? taskDrag : null;
+                  if (td && taskDragRef.current) {
+                    const tp = taskDragRef.current.type;
+                    if (tp === "move") { aS += td.delta; aE += td.delta; }
+                    else if (tp === "resizeLeft") { aS += td.delta; }
+                    else { aE += td.delta; }
+                    aS = Math.max(0, aS); aE = Math.min(dates.length - 1, aE);
+                    if (aS > aE) return null;
+                  }
                   const sc = STATUS_COLORS[task.status] || STATUS_COLORS.planned;
                   const taskBg = mode === "dark" ? sc.bg : sc.bgLight;
                   const taskBorder = mode === "dark" ? sc.border : (sc.borderLight || sc.border);
+                  const barW = (aE - aS + 1) * CELL_W - 2;
                   return (
-                    <div key={task.id} draggable onDragStart={(e) => handleTaskDragStart(e, task.id)} onDragEnd={handleTaskDragEnd}
-                      onClick={() => { if (!draggingTaskId) { setEditingTask(task); setShowTaskModal(true); } }}
+                    <div key={task.id}
+                      onMouseDown={(e) => { if (!isMobile && e.button === 0 && !td) startTaskResize(e, task, "move"); }}
                       onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, task }); }}
-                      style={{ position: "absolute", left: aS * CELL_W + 1, top: rIdx * CELL_H + 4, width: (aE - aS + 1) * CELL_W - 2, height: CELL_H - 8, background: taskBg, border: `1.5px solid ${taskBorder}`, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "flex-start", fontSize: 10, fontWeight: 600, color: mode === "dark" ? (sc.text || "#c4c8d0") : taskBorder, cursor: "grab", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 5px", boxShadow: `0 1px 4px ${t.shadowColor}`, zIndex: 10, opacity: draggingTaskId === task.id ? 0.5 : searchMatch && !searchMatch.taskIds.has(task.id) ? 0.15 : 1, transition: "opacity .15s" }}
-                      title={`${task.title}\n${task.startDate} ~ ${task.endDate}\n${sc.label}`}>{task.title}
+                      style={{ position: "absolute", left: aS * CELL_W + 1, top: rIdx * CELL_H + 4, width: barW, height: CELL_H - 8, background: taskBg, border: `1.5px solid ${taskBorder}`, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "flex-start", fontSize: 10, fontWeight: 600, color: mode === "dark" ? (sc.text || "#c4c8d0") : taskBorder, cursor: td ? "grabbing" : "grab", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 10px", boxShadow: `0 1px 4px ${t.shadowColor}`, zIndex: td ? 50 : 10, opacity: draggingTaskId === task.id ? 0.5 : td ? 0.85 : searchMatch && !searchMatch.taskIds.has(task.id) ? 0.15 : 1, transition: td ? "none" : "opacity .15s" }}
+                      title={`${task.title}\n${task.startDate} ~ ${task.endDate}\n${sc.label}`}>
+                      {task.title}
+                      {!isMobile && barW > 20 && <div onMouseDown={(e) => startTaskResize(e, task, "resizeLeft")} style={{ position: "absolute", left: 0, top: 0, width: 8, height: "100%", cursor: "col-resize", zIndex: 2 }} />}
+                      {!isMobile && barW > 20 && <div onMouseDown={(e) => startTaskResize(e, task, "resizeRight")} style={{ position: "absolute", right: 0, top: 0, width: 8, height: "100%", cursor: "col-resize", zIndex: 2 }} />}
                     </div>
                   );
                 })}
@@ -1223,14 +1469,7 @@ function ArtSchedule() {
         // D-day 셀 렌더러 — colType: "art"|"first"|"last", hasItems: 행에 항목 있는지
         const deadlineLeftColor = { art: "#4a7058", first: "#7889a8", last: "#7e6e98" };
         const deadlineBgColor = { art: mode === "dark" ? "rgba(74,112,88,0.08)" : "rgba(74,112,88,0.05)", first: mode === "dark" ? "rgba(120,137,168,0.06)" : "rgba(120,137,168,0.04)", last: mode === "dark" ? "rgba(126,110,152,0.06)" : "rgba(126,110,152,0.04)" };
-        const ddayColorCell = (diff) => {
-          if (diff === null || diff === undefined) return {};
-          if (diff < 0) return { color: "#586070", textDecoration: "line-through" };
-          if (diff === 0) return { color: mode === "dark" ? "#e8d0d3" : "#fff", background: mode === "dark" ? "#a05560" : "#cf222e", borderRadius: 4, padding: "1px 5px", fontWeight: 700 };
-          if (diff <= 6) return { color: mode === "dark" ? "#a05560" : "#cf222e", fontWeight: 700 };
-          if (diff <= 13) return { color: "#9e8548" };
-          return { color: mode === "dark" ? "#b0b4be" : "#586070" };
-        };
+        const ddayColorCell = (diff) => ddayColor(diff, mode);
         const renderDdayCell = (dateStr, opts = {}) => {
           const { noBorderRight, colType = "art", hasItems = false } = opts;
           const dd = calcDday(dateStr);
@@ -1323,7 +1562,7 @@ function ArtSchedule() {
             </colgroup>
             <thead>
               <tr style={{ background: t.headerBg, position: "sticky", top: 0, zIndex: 10 }}>
-                {(isMobile ? [{t:"월"},{t:"업데이트"},{t:"항목"},{t:"미정"}] : [{t:"월"},{t:"업데이트"},{t:"항목"},{t:"미정"},{t:"아트 마감",ic:"palette",cnt:"art"},{t:"1차 통머지",ic:"gitMerge",cnt:"first"},{t:"마지막 통머지",ic:"rocket",cnt:"last"}]).map((col, ci, arr) => (
+                {(isMobile ? UPDATE_COLS_MOBILE : UPDATE_COLS_DESKTOP).map((col, ci, arr) => (
                   <th key={ci} style={{ ...thS(t), borderRight: ci === arr.length - 1 ? "none" : `1.5px solid ${t.border}` }}>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>{col.ic && <LuIcon name={col.ic} size={13} />}{col.t}{col.cnt && dlCnt[col.cnt][1] > 0 && <span style={{ fontSize: 10, fontWeight: 600, marginLeft: 2, color: dlCntColor(dlCnt[col.cnt][0], dlCnt[col.cnt][1]) }}>({dlCnt[col.cnt][0]}/{dlCnt[col.cnt][1]})</span>}</span>
                     {ci < arr.length - 1 && <div onMouseDown={(e) => startColResize(e, ci)} style={{ position: "absolute", right: -3, top: 0, bottom: 0, width: 6, cursor: "col-resize", zIndex: 2 }} onMouseOver={(e) => e.currentTarget.style.background = t.accent + "44"} onMouseOut={(e) => e.currentTarget.style.background = "transparent"} />}
@@ -1341,6 +1580,7 @@ function ArtSchedule() {
                   const entry = updateData[ds] || {};
                   const items = toArr(entry.items);
                   const iTeams = entry.itemTeams || [];
+                  const iJiras = entry.itemJiras || [];
                   const isSel = selSet.has(ds);
                   const msName = entry.milestone || "";
                   const msMatch = msName ? milestones.find(m => m.name === msName) : null;
@@ -1392,6 +1632,7 @@ function ArtSchedule() {
                         {isEmpty ? null : filteredIdxs.map((i) => {
                           const it = items[i];
                           const teams = iTeams[i] || [];
+                          const jiraUrl = iJiras[i] || "";
                           return (
                           <span key={i} draggable
                             onDragStart={(e) => { e.stopPropagation(); setDragItem({ fromDate: ds, index: i, field: "items" }); e.dataTransfer.effectAllowed = "move"; }}
@@ -1399,7 +1640,7 @@ function ArtSchedule() {
                             onMouseDown={(e) => e.stopPropagation()}
                             onClick={(e) => { e.stopPropagation(); setEditingUpdate(ds); }}
                             style={chipS(dragItem && dragItem.fromDate === ds && dragItem.field === "items" && dragItem.index === i)}
-                          ><span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: isMobile ? "normal" : "nowrap", wordBreak: isMobile ? "break-all" : undefined }}>{it}</span>{!isMobile && teams.map(tn => { const tc = TEAM_TAG_COLORS[tn] || TEAM_TAG_COLORS[(Object.keys(TEAM_TAG_COLORS).find(k => tn.startsWith(k)))] || TEAM_TAG_COLORS["공통"]; const c = tc[mode] || tc.dark; return <span key={tn} style={{ padding: "2px 8px", fontSize: 10, borderRadius: 10, border: `1px solid ${c.border}`, background: c.bg, color: c.color, whiteSpace: "nowrap", flexShrink: 0 }}>{tn}</span>; })}</span>
+                          >{jiraUrl && <a href={jiraUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="JIRA" style={{ display: "inline-flex", flexShrink: 0, color: "#2684ff" }}><LuIcon name="externalLink" size={12} color="#2684ff" /></a>}<span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: isMobile ? "normal" : "nowrap", wordBreak: isMobile ? "break-all" : undefined }}>{it}</span>{!isMobile && teams.map(tn => { const tc = TEAM_TAG_COLORS[tn] || TEAM_TAG_COLORS[(Object.keys(TEAM_TAG_COLORS).find(k => tn.startsWith(k)))] || TEAM_TAG_COLORS["공통"]; const c = tc[mode] || tc.dark; return <span key={tn} style={{ padding: "2px 8px", fontSize: 10, borderRadius: 10, border: `1px solid ${c.border}`, background: c.bg, color: c.color, whiteSpace: "nowrap", flexShrink: 0 }}>{tn}</span>; })}</span>
                           );
                         })}
                       </td>
@@ -1669,6 +1910,10 @@ function btn(bg, fg) { return { padding: "5px 12px", background: bg, border: "no
 function iconBtn(color) { return { background: "none", border: "none", color, cursor: "pointer", padding: "0 3px", display: "inline-flex", alignItems: "center" }; }
 function thS(t) { return { padding: "10px 8px", textAlign: "center", borderBottom: `2.5px solid ${t.border}`, borderRight: `1.5px solid ${t.border}`, color: t.text, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", position: "relative", userSelect: "none" }; }
 function tdS(t) { return { padding: "8px 8px", borderBottom: `1.5px solid ${t.border}`, borderRight: `1.5px solid ${t.border}`, fontSize: 12, textAlign: "center", verticalAlign: "middle", color: t.text }; }
+function formStyles(t, sm) { return {
+  iS: { width: "100%", padding: sm ? "8px 10px" : "10px 12px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.text, borderRadius: 7, fontSize: sm ? 13 : 14, marginTop: sm ? 4 : 6, boxSizing: "border-box", outline: "none" },
+  lS: { fontSize: sm ? 11 : 13, color: sm ? t.textDim : t.text, fontWeight: sm ? undefined : 600, display: "flex", flexDirection: "column", marginBottom: sm ? 10 : 12 }
+}; }
 
 function Modal({ children, onClose, title, t }) {
   const mob = window.innerWidth < 768;
@@ -1693,8 +1938,7 @@ function Modal({ children, onClose, title, t }) {
 function TaskForm({ t, mode, task, onSave, onDelete, members }) {
   const [f, setF] = useState({ ...task });
   const up = (k, v) => setF((p) => ({ ...p, [k]: v }));
-  const iS = { width: "100%", padding: "10px 12px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.text, borderRadius: 7, fontSize: 14, marginTop: 6, boxSizing: "border-box", outline: "none" };
-  const lS = { fontSize: 13, color: t.text, fontWeight: 600, display: "flex", flexDirection: "column", marginBottom: 12 };
+  const { iS, lS } = formStyles(t);
   return (
     <div>
       {f.status !== "leave" && <label style={lS}>작업명<input value={f.title} onChange={(e) => up("title", e.target.value)} style={iS} autoFocus placeholder="작업 내용" /></label>}
@@ -1729,8 +1973,7 @@ function TaskForm({ t, mode, task, onSave, onDelete, members }) {
 function MilestoneForm({ t, mode, ms, onSave, onDelete }) {
   const [f, setF] = useState({ ...ms, status: ms.status || "upcoming" });
   const up = (k, v) => setF((p) => ({ ...p, [k]: v }));
-  const iS = { width: "100%", padding: "10px 12px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.text, borderRadius: 7, fontSize: 14, marginTop: 6, boxSizing: "border-box", outline: "none" };
-  const lS = { fontSize: 13, color: t.text, fontWeight: 600, display: "flex", flexDirection: "column", marginBottom: 12 };
+  const { iS, lS } = formStyles(t);
   return (
     <div>
       <label style={lS}>이름<input value={f.name} onChange={(e) => up("name", e.target.value)} style={iS} autoFocus /></label>
@@ -1774,18 +2017,18 @@ function UpdateForm({ t, mode, dateStr, entry, monthLabel, onSave }) {
   const [f, setF] = useState({
     milestone: entry.milestone || "",
     items: initArr(entry.items),
-    itemTeams: (entry.itemTeams || []).map(t => [...(t || [])]),
+    itemTeams: (entry.itemTeams || []).map(a => [...(a || [])]),
+    itemJiras: (entry.items || []).map((_, i) => (entry.itemJiras || [])[i] || ""),
     pending: initArr(entry.pending),
     firstMerge: entry.firstMerge || "",
     lastMerge: entry.lastMerge || "",
   });
   const up = (k, v) => setF((p) => ({ ...p, [k]: v }));
-  const addItem = (field) => setF(p => ({ ...p, [field]: [...p[field], ""], ...(field === "items" ? { itemTeams: [...p.itemTeams, []] } : {}) }));
+  const addItem = (field) => setF(p => ({ ...p, [field]: [...p[field], ""], ...(field === "items" ? { itemTeams: [...p.itemTeams, []], itemJiras: [...p.itemJiras, ""] } : {}) }));
   const updateItem = (field, idx, val) => setF(p => { const a = [...p[field]]; a[idx] = val; return { ...p, [field]: a }; });
-  const removeItem = (field, idx) => setF(p => { const a = [...p[field]]; a.splice(idx, 1); const upd = { ...p, [field]: a }; if (field === "items") { const ta = [...p.itemTeams]; ta.splice(idx, 1); upd.itemTeams = ta; } return upd; });
+  const removeItem = (field, idx) => setF(p => { const a = [...p[field]]; a.splice(idx, 1); const upd = { ...p, [field]: a }; if (field === "items") { const ta = [...p.itemTeams]; ta.splice(idx, 1); upd.itemTeams = ta; const ja = [...p.itemJiras]; ja.splice(idx, 1); upd.itemJiras = ja; } return upd; });
   const toggleItemTeam = (idx, teamName) => setF(p => { const ta = [...p.itemTeams]; const cur = [...(ta[idx] || [])]; const ti = cur.indexOf(teamName); if (ti >= 0) cur.splice(ti, 1); else cur.push(teamName); ta[idx] = cur; return { ...p, itemTeams: ta }; });
-  const iS = { width: "100%", padding: "10px 12px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.text, borderRadius: 7, fontSize: 14, marginTop: 6, boxSizing: "border-box", outline: "none" };
-  const lS = { fontSize: 13, color: t.text, fontWeight: 600, display: "flex", flexDirection: "column", marginBottom: 12 };
+  const { iS, lS } = formStyles(t);
   const itemRow = { display: "flex", gap: 6, alignItems: "center", marginTop: 4 };
   const delBtn = { background: "none", border: "none", color: t.accentAlt, cursor: "pointer", fontSize: 18, padding: "0 4px", lineHeight: 1, flexShrink: 0 };
   const addBtn = { padding: "6px 12px", background: "transparent", border: `1px dashed ${t.border}`, borderRadius: 6, color: t.textDim, cursor: "pointer", fontSize: 13, marginTop: 6, width: "100%" };
@@ -1801,7 +2044,7 @@ function UpdateForm({ t, mode, dateStr, entry, monthLabel, onSave }) {
       <button onClick={() => addItem(field)} style={{ ...addBtn, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}><LuIcon name="plus" size={14} /> {label} 추가</button>
     </div>
   );
-  const doSave = () => { const validIdxs = f.items.map((v, i) => v ? i : -1).filter(i => i >= 0); const clean = { ...f, items: validIdxs.map(i => f.items[i]), itemTeams: validIdxs.map(i => f.itemTeams[i] || []), pending: f.pending.filter(Boolean) }; onSave(clean); };
+  const doSave = () => { const validIdxs = f.items.map((v, i) => v ? i : -1).filter(i => i >= 0); const clean = { ...f, items: validIdxs.map(i => f.items[i]), itemTeams: validIdxs.map(i => f.itemTeams[i] || []), itemJiras: validIdxs.map(i => f.itemJiras[i] || ""), pending: f.pending.filter(Boolean) }; onSave(clean); };
   const renderItemsWithTeams = () => (
     <div style={{ ...lS, marginBottom: 14 }}>
       <span>항목</span>
@@ -1815,6 +2058,11 @@ function UpdateForm({ t, mode, dateStr, entry, monthLabel, onSave }) {
             {TEAM_TAG_NAMES.map(tn => { const sel = (f.itemTeams[i] || []).includes(tn); const tc = TEAM_TAG_COLORS[tn]; const c = tc[mode] || tc.dark; return (
               <button key={tn} onClick={() => toggleItemTeam(i, tn)} style={{ padding: "3px 10px", fontSize: 11, borderRadius: 10, border: `1px solid ${sel ? c.border : t.border}`, background: sel ? c.bg : "transparent", color: sel ? c.color : t.textDim, cursor: "pointer", fontWeight: sel ? 700 : 500, opacity: sel ? 1 : 0.5, transition: "all .15s" }}>{tn}</button>
             ); })}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
+            <LuIcon name="externalLink" size={14} color={f.itemJiras[i] ? "#2684ff" : t.textDim} style={{ flexShrink: 0 }} />
+            <input value={f.itemJiras[i] || ""} onChange={(e) => setF(p => { const ja = [...p.itemJiras]; ja[i] = e.target.value; return { ...p, itemJiras: ja }; })} style={{ ...iS, marginTop: 0, flex: 1, border: "none", padding: "4px 8px", background: "transparent", fontSize: 12 }} placeholder="JIRA 링크 (예: https://jira.example.com/browse/XX-123)" />
+            {f.itemJiras[i] && <a href={f.itemJiras[i]} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: "#2684ff", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", textDecoration: "none" }} title="JIRA 열기">열기</a>}
           </div>
         </div>
       ))}
@@ -1890,8 +2138,7 @@ function MemberEditForm({ t, member, teams, currentTeamId, onSave }) {
     setConcurrent(checked);
     if (!checked && selectedRoles.length > 1) setSelectedRoles([selectedRoles[0]]);
   };
-  const iS = { width: "100%", padding: "8px 10px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.text, borderRadius: 7, fontSize: 13, marginTop: 4, boxSizing: "border-box", outline: "none" };
-  const lS = { fontSize: 11, color: t.textDim, display: "flex", flexDirection: "column", marginBottom: 10 };
+  const { iS, lS } = formStyles(t, true);
   return (
     <div>
       <label style={lS}>팀
@@ -2034,8 +2281,7 @@ function SeatEditForm({ t, seat, onSave }) {
   const [team, setTeam] = useState(seat.team);
   const [name, setName] = useState(seat.name);
   const [isLead, setIsLead] = useState(seat.isLead);
-  const iS = { width: "100%", padding: "10px 12px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.text, borderRadius: 7, fontSize: 14, marginTop: 6, boxSizing: "border-box", outline: "none" };
-  const lS = { fontSize: 13, color: t.text, fontWeight: 600, display: "flex", flexDirection: "column", marginBottom: 12 };
+  const { iS, lS } = formStyles(t);
   const teamList = Object.keys(SEAT_TEAM_COLORS);
   return (
     <div>
@@ -2059,8 +2305,7 @@ function SeatEditForm({ t, seat, onSave }) {
 function DeviceEditForm({ t, device, allMembers, onSave, onDelete }) {
   const [f, setF] = useState({ ...device });
   const up = (k, v) => setF(p => ({ ...p, [k]: v }));
-  const iS = { width: "100%", padding: "8px 10px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.text, borderRadius: 7, fontSize: 13, marginTop: 4, boxSizing: "border-box", outline: "none" };
-  const lS = { fontSize: 11, color: t.textDim, display: "flex", flexDirection: "column", marginBottom: 10 };
+  const { iS, lS } = formStyles(t, true);
   const teamList = [...Object.keys(SEAT_TEAM_COLORS), "개발지원팀"];
   return (
     <div>
@@ -2107,8 +2352,7 @@ function DeviceEditForm({ t, device, allMembers, onSave, onDelete }) {
 function ToEditForm({ t, row, currentCount, onSave }) {
   const [f, setF] = useState({ ...row });
   const up = (k, v) => setF(p => ({ ...p, [k]: v }));
-  const iS = { width: "100%", padding: "8px 10px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.text, borderRadius: 7, fontSize: 13, marginTop: 4, boxSizing: "border-box", outline: "none" };
-  const lS = { fontSize: 11, color: t.textDim, display: "flex", flexDirection: "column", marginBottom: 10 };
+  const { iS, lS } = formStyles(t, true);
   return (
     <div>
       <label style={lS}>팀 <input value={f.label} disabled style={{ ...iS, opacity: 0.6 }} /></label>
