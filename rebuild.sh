@@ -6,6 +6,28 @@ UPDATE=$(cat update_data.js 2>/dev/null || echo "")
 # Read art_schedule, remove import lines, change export default function to function
 ART=$(sed '/^import /d; s/^export default function/function/' proj/art_schedule)
 
+# 1) Build temp JSX file
+cat > _tmp_jsx.js << 'JSXHEADER'
+const { useState, useCallback, useRef, useEffect, useMemo } = React;
+JSXHEADER
+
+echo "$INIT" >> _tmp_jsx.js
+echo "" >> _tmp_jsx.js
+echo "$UPDATE" >> _tmp_jsx.js
+echo "" >> _tmp_jsx.js
+echo "$ART" >> _tmp_jsx.js
+echo "" >> _tmp_jsx.js
+echo 'ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(ArtSchedule, null));' >> _tmp_jsx.js
+
+# 2) Babel: JSX → plain JS
+npx babel _tmp_jsx.js --plugins=@babel/plugin-transform-react-jsx --no-babelrc -o _tmp_compiled.js 2>&1
+if [ $? -ne 0 ]; then
+  echo "Babel compile failed!"
+  rm -f _tmp_jsx.js _tmp_compiled.js
+  exit 1
+fi
+
+# 3) Assemble index.html (no Babel standalone needed)
 cat > index.html << 'HEADER'
 <!DOCTYPE html>
 <html lang="ko">
@@ -15,7 +37,6 @@ cat > index.html << 'HEADER'
 <title>NC 아트실 일정</title>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 html, body, #root { height:100%; overflow:hidden; }
@@ -28,22 +49,18 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
 </head>
 <body>
 <div id="root"></div>
-<script type="text/babel">
-const { useState, useCallback, useRef, useEffect, useMemo } = React;
+<script>
 HEADER
 
-echo "$INIT" >> index.html
-echo "" >> index.html
-echo "$UPDATE" >> index.html
-echo "" >> index.html
-echo "$ART" >> index.html
-echo "" >> index.html
+cat _tmp_compiled.js >> index.html
 
 cat >> index.html << 'FOOTER'
-ReactDOM.createRoot(document.getElementById("root")).render(<ArtSchedule />);
 </script>
 </body>
 </html>
 FOOTER
+
+# 4) Cleanup temp files
+rm -f _tmp_jsx.js _tmp_compiled.js
 
 echo "Done. Lines: $(wc -l < index.html)"
