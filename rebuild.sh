@@ -19,8 +19,8 @@ echo "$ART" >> _tmp_jsx.js
 echo "" >> _tmp_jsx.js
 echo 'ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(ArtSchedule, null));' >> _tmp_jsx.js
 
-# 2) Babel: JSX → plain JS
-npx babel _tmp_jsx.js --plugins=@babel/plugin-transform-react-jsx --no-babelrc -o _tmp_compiled.js 2>&1
+# 2) Babel: JSX + preset-env → plain JS (matches old Babel standalone behavior)
+npx babel _tmp_jsx.js --presets=@babel/preset-env --plugins=@babel/plugin-transform-react-jsx --no-babelrc -o _tmp_compiled.js 2>&1
 if [ $? -ne 0 ]; then
   echo "Babel compile failed!"
   rm -f _tmp_jsx.js _tmp_compiled.js
@@ -35,8 +35,9 @@ cat > index.html << 'HEADER'
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>NC 아트실 일정</title>
-<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 html, body, #root { height:100%; overflow:hidden; }
@@ -49,6 +50,11 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
 </head>
 <body>
 <div id="root"></div>
+<script>
+window.onerror = function(msg, src, line, col, err) {
+  document.body.innerHTML = '<pre style="color:red;padding:20px;font-size:14px;">JS Error\n' + msg + '\nLine: ' + line + ', Col: ' + col + '\n' + (err && err.stack ? err.stack : '') + '</pre>';
+};
+</script>
 <script>
 HEADER
 
