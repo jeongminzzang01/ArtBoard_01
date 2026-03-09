@@ -1,3 +1,6 @@
 .claude/
 ArtBoard/
 node_modules/
+server/data/
+server/_extract_static.js
+public/index.html

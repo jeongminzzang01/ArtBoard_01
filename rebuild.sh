@@ -1,8 +1,4 @@
 #!/bin/bash
-# Read init_data.js, remove export line
-INIT=$(sed '/^export /d' init_data.js)
-# Read update_data.js
-UPDATE=$(cat update_data.js 2>/dev/null || echo "")
 # Read art_schedule, remove import lines, change export default function to function
 ART=$(sed '/^import /d; s/^export default function/function/' proj/art_schedule)
 
@@ -11,15 +7,11 @@ cat > _tmp_jsx.js << 'JSXHEADER'
 const { useState, useCallback, useRef, useEffect, useMemo } = React;
 JSXHEADER
 
-echo "$INIT" >> _tmp_jsx.js
-echo "" >> _tmp_jsx.js
-echo "$UPDATE" >> _tmp_jsx.js
-echo "" >> _tmp_jsx.js
 echo "$ART" >> _tmp_jsx.js
 echo "" >> _tmp_jsx.js
-echo 'ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(ArtSchedule, null));' >> _tmp_jsx.js
+echo 'ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App, null));' >> _tmp_jsx.js
 
-# 2) Babel: JSX + preset-env → plain JS (matches old Babel standalone behavior)
+# 2) Babel: JSX + preset-env → plain JS
 npx babel _tmp_jsx.js --presets=@babel/preset-env --plugins=@babel/plugin-transform-react-jsx --no-babelrc -o _tmp_compiled.js 2>&1
 if [ $? -ne 0 ]; then
   echo "Babel compile failed!"
@@ -27,8 +19,11 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-# 3) Assemble index.html (no Babel standalone needed)
-cat > index.html << 'HEADER'
+# 3) Ensure public dir exists
+mkdir -p public
+
+# 4) Assemble public/index.html
+cat > public/index.html << 'HEADER'
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -58,15 +53,15 @@ window.onerror = function(msg, src, line, col, err) {
 <script>
 HEADER
 
-cat _tmp_compiled.js >> index.html
+cat _tmp_compiled.js >> public/index.html
 
-cat >> index.html << 'FOOTER'
+cat >> public/index.html << 'FOOTER'
 </script>
 </body>
 </html>
 FOOTER
 
-# 4) Cleanup temp files
+# 5) Cleanup temp files
 rm -f _tmp_jsx.js _tmp_compiled.js
 
-echo "Done. Lines: $(wc -l < index.html)"
+echo "Done. Lines: $(wc -l < public/index.html)"

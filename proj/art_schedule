@@ -72,6 +72,7 @@ const ICON_DATA = {
   chevronUp: [["path",{d:"m18 15-6-6-6 6"}]],
   check: [["path",{d:"M20 6 9 17l-5-5"}]],
   externalLink: [["path",{d:"M15 3h6v6"}],["path",{d:"M10 14 21 3"}],["path",{d:"M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"}]],
+  logOut: [["path",{d:"M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"}],["polyline",{points:"16 17 21 12 16 7"}],["line",{x1:21,x2:9,y1:12,y2:12}]],
   sliders: [["line",{x1:4,x2:4,y1:21,y2:14}],["line",{x1:4,x2:4,y1:10,y2:3}],["line",{x1:12,x2:12,y1:21,y2:12}],["line",{x1:12,x2:12,y1:8,y2:3}],["line",{x1:20,x2:20,y1:21,y2:16}],["line",{x1:20,x2:20,y1:12,y2:3}],["line",{x1:1,x2:7,y1:14,y2:14}],["line",{x1:9,x2:15,y1:8,y2:8}],["line",{x1:17,x2:23,y1:16,y2:16}]],
 };
 const LuIcon = ({ name, size = 16, sw = 1.5, color = "currentColor", fill, style, ...props }) => {
@@ -232,7 +233,38 @@ const themes = {
   },
 };
 
-// INIT_TEAMS, INIT_TASKS, INIT_MS: loaded from init_data.js
+// ─── API 통신 헬퍼 ───
+const API_BASE = '/api';
+async function apiFetch(path, options = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...options.headers },
+    ...options,
+  });
+  const json = await res.json();
+  if (!json.ok) {
+    if (json.code === 'AUTH_REQUIRED') {
+      window.location.reload();
+      throw new Error('AUTH_REQUIRED');
+    }
+    throw new Error(json.error || 'API error');
+  }
+  return json.data;
+}
+const api = {
+  getUsersList: () => apiFetch('/auth/users-list'),
+  login: (name, password) => apiFetch('/auth/login', { method: 'POST', body: JSON.stringify({ name, password }) }),
+  logout: () => apiFetch('/auth/logout', { method: 'POST' }),
+  me: () => apiFetch('/auth/me'),
+  loadInitial: () => apiFetch('/data/initial'),
+  saveAll: (data) => apiFetch('/data/save-all', { method: 'PUT', body: JSON.stringify(data) }),
+  getUsers: () => apiFetch('/users'),
+  createUser: (u) => apiFetch('/users', { method: 'POST', body: JSON.stringify(u) }),
+  updateUser: (id, u) => apiFetch(`/users/${id}`, { method: 'PUT', body: JSON.stringify(u) }),
+  deleteUser: (id) => apiFetch(`/users/${id}`, { method: 'DELETE' }),
+  setupStatus: () => apiFetch('/auth/setup-status'),
+  setup: (name, password) => apiFetch('/auth/setup', { method: 'POST', body: JSON.stringify({ name, password }) }),
+};
 
 // ─── 기타 메뉴 정의 ───
 const EXTRA_MENUS = [
@@ -303,70 +335,38 @@ const INIT_TO_DATA = [
   { id: "to7", label: "TA", teamNames: ["TA팀"], incoming: 0, recruiting: 0, note: "" },
 ];
 
-// ─── UPDATE_SCHEDULE → updateData 변환 ───
-const INIT_UPDATE = (() => {
-  if (typeof UPDATE_SCHEDULE === "undefined") return { data: {}, pending: {} };
-  const data = {};
-  const pending = {};
-  const addPending = (mk, item) => { if (!pending[mk]) pending[mk] = []; pending[mk].push(item); };
-  UPDATE_SCHEDULE.forEach(entry => {
-    if (entry.date === "보류") {
-      addPending("보류", entry.item);
-      return;
-    }
-    const d = entry.date;
-    if (!data[d]) data[d] = { items: [], itemTeams: [], itemJiras: [], milestone: "", firstMerge: "", lastMerge: "" };
-    data[d].items.push(entry.item);
-    data[d].itemTeams.push(entry.teams || []);
-    data[d].itemJiras.push(entry.jira || "");
-    if (entry.milestone && !data[d].milestone) data[d].milestone = entry.milestone;
-    if (entry.remark) {
-      const year = parseInt(d.split("-")[0]);
-      const prd = (rx) => { const m = entry.remark.match(rx); if (!m) return ""; return `${year}-${String(parseInt(m[1])).padStart(2,"0")}-${String(parseInt(m[2])).padStart(2,"0")}`; };
-      const fm = prd(/1차 통머지\s*-\s*(\d+)\/(\d+)/);
-      const lm = prd(/마지막 통머지\s*-\s*(\d+)\/(\d+)/);
-      if (fm && !data[d].firstMerge) data[d].firstMerge = fm;
-      if (lm && !data[d].lastMerge) data[d].lastMerge = lm;
-    }
-    if (entry.note) {
-      const dt = new Date(d + "T00:00:00");
-      addPending(`${dt.getFullYear()}-${dt.getMonth() + 1}`, entry.note);
-    }
-  });
-  return { data, pending };
-})();
+// ─── localStorage 개인 설정 저장 ───
+const PREFS_KEY = "artboard_prefs_v1";
+const loadLocalPrefs = () => { try { const r = localStorage.getItem(PREFS_KEY); return r ? JSON.parse(r) : null; } catch { return null; } };
+const saveLocalPrefs = (d) => { try { localStorage.setItem(PREFS_KEY, JSON.stringify(d)); } catch {} };
 
-// ─── localStorage 자동 저장 ───
-const STORAGE_KEY = "artboard_data_v1";
-const loadStorage = () => { try { const r = localStorage.getItem(STORAGE_KEY); return r ? JSON.parse(r) : null; } catch { return null; } };
-const saveStorage = (d) => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); } catch {} };
-
-export default function ArtSchedule() {
-  const _stored = useMemo(() => loadStorage(), []);
-  const [mode, setMode] = useState(_stored?.mode || "dark");
+function ArtSchedule({ initialData, currentUser, onLogout }) {
+  const _prefs = useMemo(() => loadLocalPrefs(), []);
+  const canEdit = currentUser.role === 'admin' || currentUser.role === 'editor';
+  const [mode, setMode] = useState(_prefs?.mode || "dark");
   const t = themes[mode];
   const [tab, setTab] = useState("schedule");
 
-  const [teams, setTeams] = useState(_stored?.teams || INIT_TEAMS);
-  const [milestones, setMilestones] = useState(() => _stored?.milestones || INIT_MS.map(m => ({ ...m, status: m.status || "upcoming" })));
-  const [tasks, setTasks] = useState(_stored?.tasks || INIT_TASKS);
-  const [customHolidays, setCustomHolidays] = useState(_stored?.customHolidays || []);
+  const [teams, setTeams] = useState(initialData.teams);
+  const [milestones, setMilestones] = useState(initialData.milestones);
+  const [tasks, setTasks] = useState(initialData.tasks);
+  const [customHolidays, setCustomHolidays] = useState(initialData.customHolidays || []);
 
   const [displayMonths, setDisplayMonths] = useState(() => {
-    if (_stored?.displayMonths) return _stored.displayMonths;
+    if (initialData.displayMonths && initialData.displayMonths.length > 0) return initialData.displayMonths;
     const m = [];
     for (let i = 0; i < 12; i++) m.push({ year: 2025, month: i });
     for (let i = 0; i < 12; i++) m.push({ year: 2026, month: i });
     return m;
   });
 
-  const [updateData, setUpdateData] = useState(_stored?.updateData || INIT_UPDATE.data);
+  const [updateData, setUpdateData] = useState(initialData.updateData || {});
   const [editingUpdate, setEditingUpdate] = useState(null);
-  const [hiddenUpdateDates, setHiddenUpdateDates] = useState(_stored?.hiddenUpdateDates || []);
-  const [showPastUpdates, setShowPastUpdates] = useState(_stored?.showPastUpdates || false);
+  const [hiddenUpdateDates, setHiddenUpdateDates] = useState(initialData.hiddenUpdateDates || []);
+  const [showPastUpdates, setShowPastUpdates] = useState(_prefs?.showPastUpdates || false);
   const [updateSelect, setUpdateSelect] = useState(null);
   const updateDragRef = useRef(null);
-  const [pendingByMonth, setPendingByMonth] = useState(_stored?.pendingByMonth || INIT_UPDATE.pending);
+  const [pendingByMonth, setPendingByMonth] = useState(initialData.pendingByMonth || {});
   const [updateTeamFilter, setUpdateTeamFilter] = useState("전체");
   const [dragItem, setDragItem] = useState(null);
   const [dragOverDate, setDragOverDate] = useState(null);
@@ -395,7 +395,7 @@ export default function ArtSchedule() {
   const [editingMember, setEditingMember] = useState(null);
   const [draggingTaskId, setDraggingTaskId] = useState(null);
   const [dragOverMemberId, setDragOverMemberId] = useState(null);
-  const [collapsedTeams, setCollapsedTeams] = useState(_stored?.collapsedTeams || []);
+  const [collapsedTeams, setCollapsedTeams] = useState(_prefs?.collapsedTeams || []);
   const [memberDrag, setMemberDrag] = useState(null);
   const [memberDragOver, setMemberDragOver] = useState(null);
   const [viewMode, setViewMode] = useState(() => window.innerWidth < 768 ? "week" : "full");
@@ -415,23 +415,23 @@ export default function ArtSchedule() {
   }, []);
   const [zoomIdx, setZoomIdx] = useState(() => window.innerWidth < 768 ? 0 : 1);
   const zoom = ZOOM_LEVELS[zoomIdx];
-  const [displaySettings, setDisplaySettings] = useState(_stored?.displaySettings || { ...DISPLAY_DEFAULTS });
+  const [displaySettings, setDisplaySettings] = useState(_prefs?.displaySettings || { ...DISPLAY_DEFAULTS });
   const _baseCellW = zoom.cellW + (displaySettings.cellWidth - DISPLAY_DEFAULTS.cellWidth);
   const CELL_H = zoom.cellH + (displaySettings.rowHeight - DISPLAY_DEFAULTS.rowHeight);
 
-  const [seatData, setSeatData] = useState(_stored?.seatData || INITIAL_SEAT_DATA);
+  const [seatData, setSeatData] = useState(initialData.seatData && initialData.seatData.length > 0 ? initialData.seatData : INITIAL_SEAT_DATA);
   const [editingSeat, setEditingSeat] = useState(null);
   const [seatSwapConfirm, setSeatSwapConfirm] = useState(null);
   const seatDragRef = useRef(null);
 
   // ─── 기기/TO 현황 상태 ───
-  const [devices, setDevices] = useState(_stored?.devices || INIT_DEVICES);
+  const [devices, setDevices] = useState(initialData.devices && initialData.devices.length > 0 ? initialData.devices : INIT_DEVICES);
   const [editingDevice, setEditingDevice] = useState(null);
-  const [toData, setToData] = useState(_stored?.toData || INIT_TO_DATA);
+  const [toData, setToData] = useState(initialData.toData && initialData.toData.length > 0 ? initialData.toData : INIT_TO_DATA);
   const [editingTo, setEditingTo] = useState(null);
-  const [deadlineMsId, setDeadlineMsId] = useState(_stored?.deadlineMsId || null);
+  const [deadlineMsId, setDeadlineMsId] = useState(_prefs?.deadlineMsId || null);
   const [expandedMsId, setExpandedMsId] = useState(null);
-  const [completedItems, setCompletedItems] = useState(_stored?.completedItems || {});
+  const [completedItems, setCompletedItems] = useState(_prefs?.completedItems || {});
   const m37MigratedRef = useRef(false);
   const undoStack = useRef([]);
   const [changeLog, setChangeLog] = useState([]);
@@ -443,19 +443,19 @@ export default function ArtSchedule() {
   const extraMenuRef = useRef(null);
   const [teamConfigSubTab, setTeamConfigSubTab] = useState("members");
   const [selectedConfigTeamId, setSelectedConfigTeamId] = useState(null);
-  const [teamColors, setTeamColors] = useState(_stored?.teamColors || {});
-  const [defaultCollapsedTeams, setDefaultCollapsedTeams] = useState(_stored?.defaultCollapsedTeams || []);
+  const [teamColors, setTeamColors] = useState(_prefs?.teamColors || {});
+  const [defaultCollapsedTeams, setDefaultCollapsedTeams] = useState(_prefs?.defaultCollapsedTeams || []);
 
   // ─── 아카이브 상태 ───
-  const [archivedMilestones, setArchivedMilestones] = useState(_stored?.archivedMilestones || []);
-  const [archivedTasks, setArchivedTasks] = useState(_stored?.archivedTasks || []);
-  const [archivedUpdates, setArchivedUpdates] = useState(_stored?.archivedUpdates || {});
-  const [archiveDismissedUntil, setArchiveDismissedUntil] = useState(_stored?.archiveDismissedUntil || null);
+  const [archivedMilestones, setArchivedMilestones] = useState(initialData.archivedMilestones || []);
+  const [archivedTasks, setArchivedTasks] = useState(initialData.archivedTasks || []);
+  const [archivedUpdates, setArchivedUpdates] = useState(initialData.archivedUpdates || {});
+  const [archiveDismissedUntil, setArchiveDismissedUntil] = useState(_prefs?.archiveDismissedUntil || null);
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(null);
   const [showArchiveSummary, setShowArchiveSummary] = useState(null);
 
   // ─── 스마트 뷰 상태 ───
-  const [smartViewEnabled, setSmartViewEnabled] = useState(_stored?.smartViewEnabled !== false);
+  const [smartViewEnabled, setSmartViewEnabled] = useState(_prefs?.smartViewEnabled !== false);
   const [smartHoverRow, setSmartHoverRow] = useState(-1);
 
   const stateRef = useRef();
@@ -1077,14 +1077,21 @@ export default function ArtSchedule() {
     return () => { if (g) g.removeEventListener("wheel", handler); if (hs) hs.removeEventListener("wheel", handler); };
   }, [tab, viewMode]);
 
-  // ─── localStorage 자동 저장 ───
+  // ─── 서버 자동 저장 (공유 데이터) ───
   const saveTimer = useRef(null);
+  const initialLoadDone = useRef(false);
+  useEffect(() => { initialLoadDone.current = true; }, []);
   useEffect(() => {
+    if (!initialLoadDone.current || !canEdit) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      saveStorage({ teams, tasks, milestones, customHolidays, updateData, pendingByMonth, seatData, hiddenUpdateDates, showPastUpdates, devices, toData, mode, collapsedTeams, deadlineMsId, displayMonths, completedItems, displaySettings, teamColors, defaultCollapsedTeams, archivedMilestones, archivedTasks, archivedUpdates, archiveDismissedUntil, smartViewEnabled });
-    }, 500);
-  }, [teams, tasks, milestones, customHolidays, updateData, pendingByMonth, seatData, hiddenUpdateDates, showPastUpdates, devices, toData, mode, collapsedTeams, deadlineMsId, displayMonths, completedItems, displaySettings, teamColors, defaultCollapsedTeams, archivedMilestones, archivedTasks, archivedUpdates, archiveDismissedUntil, smartViewEnabled]);
+      api.saveAll({ teams, tasks, milestones, customHolidays, updateData, pendingByMonth, seatData, hiddenUpdateDates, devices, toData, displayMonths, archivedMilestones, archivedTasks, archivedUpdates }).catch(err => console.error('Auto-save failed:', err));
+    }, 1000);
+  }, [teams, tasks, milestones, customHolidays, updateData, pendingByMonth, seatData, hiddenUpdateDates, devices, toData, displayMonths, archivedMilestones, archivedTasks, archivedUpdates]);
+  // ─── localStorage 개인 설정 저장 ───
+  useEffect(() => {
+    saveLocalPrefs({ mode, collapsedTeams, deadlineMsId, completedItems, displaySettings, teamColors, defaultCollapsedTeams, smartViewEnabled, showPastUpdates, archiveDismissedUntil });
+  }, [mode, collapsedTeams, deadlineMsId, completedItems, displaySettings, teamColors, defaultCollapsedTeams, smartViewEnabled, showPastUpdates, archiveDismissedUntil]);
 
   useEffect(() => {
     const id = "artboard-scrollbar-style";
@@ -1467,10 +1474,12 @@ export default function ArtSchedule() {
           {searchQuery && <button onClick={() => { setSearchQuery(""); searchRef.current?.focus(); }}
             style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: t.textDim, cursor: "pointer", padding: "0 2px", lineHeight: 1, display: "flex" }}><LuIcon name="x" size={12} /></button>}
         </div>}
+        {!isMobile && <span style={{ fontSize: 11, color: t.textDim, padding: "3px 8px", background: mode === "dark" ? "#222430" : "#f0f3f6", borderRadius: 10, border: `1px solid ${t.border}` }}>{currentUser.name}{!canEdit && " (읽기 전용)"}</span>}
         <button onClick={() => setMode((p) => p === "dark" ? "light" : "dark")} title={mode === "dark" ? "라이트 모드" : "다크 모드"}
           style={{ ...btn(mode === "dark" ? "#222430" : "#f0f3f6"), color: mode === "dark" ? "#c4c8d0" : "#656d76", padding: "4px 10px", borderRadius: 20, border: `1px solid ${t.border}` }}>
           <LuIcon name={mode === "dark" ? "sun" : "moon"} size={16} />
         </button>
+        <button onClick={onLogout} title="로그아웃" style={{ ...btn(t.border, t.text), padding: "3px 10px", border: `1px solid ${t.border}` }}><LuIcon name="logOut" size={14} /></button>
         <button onClick={undo} disabled={undoStack.current.length === 0} title="실행취소 (Ctrl+Z)" style={{ ...btn(t.border, t.text), padding: "3px 10px", border: `1px solid ${t.border}`, opacity: undoStack.current.length === 0 ? .3 : 1 }}><LuIcon name="undo2" size={14} /></button>
         {!isMobile && <button onClick={exportData} title="내보내기 (Ctrl+S)" style={{ ...btn(t.border, t.text), padding: "3px 10px", border: `1px solid ${t.border}` }}><LuIcon name="save" size={14} /></button>}
         {!isMobile && <button onClick={importData} title="가져오기" style={{ ...btn(t.border, t.text), padding: "3px 10px", border: `1px solid ${t.border}` }}><LuIcon name="upload" size={14} /></button>}
@@ -2084,6 +2093,11 @@ export default function ArtSchedule() {
         </div>
       )}
 
+      {tab === "extra" && extraView === "admin" && currentUser.role === 'admin' && (
+        <div style={{ flex: 1, overflow: "auto", minHeight: 0, background: t.bg, color: t.text }}>
+          <AdminPage currentUser={currentUser} onClose={() => { setExtraView(null); setTab("schedule"); }} />
+        </div>
+      )}
       {tab === "extra" && extraView === "seating" && (
         <div style={{ flex: 1, overflow: "auto", padding: isMobile ? 10 : 20, minHeight: 0, WebkitOverflowScrolling: "touch" }}>
           <SeatingChart t={t} mode={mode} seatData={seatData} memberInfo={memberInfoMap} seatDragRef={seatDragRef} isMobile={isMobile}
@@ -2134,7 +2148,7 @@ export default function ArtSchedule() {
         {/* 드롭업 메뉴 */}
         {showExtraMenu && (
           <div ref={extraMenuRef} style={{ position: "absolute", bottom: "100%", right: isMobile ? 6 : "50%", transform: isMobile ? "none" : "translateX(50%)", marginBottom: 4, background: mode === "dark" ? "#1e2029" : "#ffffff", border: `1px solid ${mode === "dark" ? "#323544" : "#d0d7de"}`, borderRadius: 8, boxShadow: mode === "dark" ? "0 -4px 16px rgba(0,0,0,0.4)" : "0 -4px 16px rgba(31,35,40,0.08)", zIndex: 200, minWidth: 180, padding: "4px 0" }}>
-            {EXTRA_MENUS.map((item, i) => {
+            {[...EXTRA_MENUS, ...(currentUser.role === 'admin' ? [{ type: 'divider' }, { id: 'admin', label: '사용자 관리', icon: '🔐' }] : [])].map((item, i) => {
               if (item.type === "divider") return <div key={"div-"+i} style={{ height: 1, background: mode === "dark" ? "#282b38" : "#d0d7de", margin: "4px 0" }} />;
               const isSel = tab === "extra" && extraView === item.id;
               return <div key={item.id} onClick={() => { setTab("extra"); setExtraView(item.id); setShowExtraMenu(false); }}
@@ -3297,4 +3311,273 @@ function TeamConfigView({ t, mode, isMobile, teams, setTeams, teamColors, setTea
       )}
     </div>
   );
+}
+
+// ─── 로그인 페이지 ───
+// ─── 최초 설정 페이지 ───
+function SetupPage({ onSetupComplete }) {
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSetup = async () => {
+    setError('');
+    if (!name.trim()) { setError('관리자 이름을 입력해주세요'); return; }
+    if (!password) { setError('비밀번호를 입력해주세요'); return; }
+    if (password.length < 4) { setError('비밀번호는 4자 이상이어야 합니다'); return; }
+    if (password !== passwordConfirm) { setError('비밀번호가 일치하지 않습니다'); return; }
+    setLoading(true);
+    try {
+      const result = await api.setup(name.trim(), password);
+      onSetupComplete(result.user);
+    } catch (err) {
+      setError(err.message || '설정에 실패했습니다');
+      setLoading(false);
+    }
+  };
+
+  const t = themes.dark;
+  const cardS = { background: t.headerBg, borderRadius: 12, padding: 32, width: 380, maxWidth: "90vw", border: `1px solid ${t.border}`, boxShadow: "0 8px 32px rgba(0,0,0,0.4)" };
+  const inputS = { width: "100%", padding: "10px 12px", background: t.inputBg, border: `1px solid ${t.border}`, borderRadius: 6, color: t.text, fontSize: 14, outline: "none" };
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: t.bg, color: t.text, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+      <div style={cardS}>
+        <h2 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 700, textAlign: "center" }}>NC 아트실 일정</h2>
+        <p style={{ margin: "0 0 24px", fontSize: 13, color: t.textDim, textAlign: "center" }}>최초 설정 - 관리자 계정 생성</p>
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: "block", fontSize: 12, color: t.textDim, marginBottom: 6 }}>관리자 이름</label>
+          <input value={name} onChange={e => setName(e.target.value)} style={inputS} placeholder="예: 홍길동" autoFocus />
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: "block", fontSize: 12, color: t.textDim, marginBottom: 6 }}>비밀번호</label>
+          <input type="password" value={password} onChange={e => setPassword(e.target.value)} style={inputS} placeholder="4자 이상" />
+        </div>
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: "block", fontSize: 12, color: t.textDim, marginBottom: 6 }}>비밀번호 확인</label>
+          <input type="password" value={passwordConfirm} onChange={e => setPasswordConfirm(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSetup()} style={inputS} placeholder="비밀번호 재입력" />
+        </div>
+        {error && <div style={{ marginBottom: 12, padding: "8px 12px", background: "rgba(207,34,46,0.15)", border: "1px solid rgba(207,34,46,0.3)", borderRadius: 6, color: "#f85149", fontSize: 12 }}>{error}</div>}
+        <button onClick={handleSetup} disabled={loading} style={{ width: "100%", padding: "10px 0", background: loading ? t.border : t.btnBg, border: "none", borderRadius: 6, color: t.btnFg, fontSize: 14, fontWeight: 600, cursor: loading ? "default" : "pointer" }}>{loading ? '설정 중...' : '관리자 계정 생성'}</button>
+        <p style={{ margin: "16px 0 0", fontSize: 11, color: t.textDim, textAlign: "center", lineHeight: 1.5 }}>이 계정이 최초 관리자가 됩니다.<br/>추후 관리자 페이지에서 다른 사용자를 추가할 수 있습니다.</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── 로그인 페이지 ───
+function LoginPage({ onLogin }) {
+  const [usersList, setUsersList] = useState([]);
+  const [selectedName, setSelectedName] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.getUsersList().then(list => { setUsersList(list); setLoading(false); }).catch(() => setLoading(false));
+  }, []);
+
+  const handleLogin = async () => {
+    if (!selectedName || !password) { setError('이름과 비밀번호를 입력해주세요'); return; }
+    setError('');
+    try {
+      const result = await api.login(selectedName, password);
+      onLogin(result.user);
+    } catch (err) {
+      setError(err.message || '로그인에 실패했습니다');
+    }
+  };
+
+  const t = themes.dark;
+  const cardS = { background: t.headerBg, borderRadius: 12, padding: 32, width: 340, maxWidth: "90vw", border: `1px solid ${t.border}`, boxShadow: "0 8px 32px rgba(0,0,0,0.4)" };
+  const inputS = { width: "100%", padding: "10px 12px", background: t.inputBg, border: `1px solid ${t.border}`, borderRadius: 6, color: t.text, fontSize: 14, outline: "none" };
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: t.bg, color: t.text, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+      <div style={cardS}>
+        <h2 style={{ margin: "0 0 8px", fontSize: 20, fontWeight: 700, textAlign: "center" }}>NC 아트실 일정</h2>
+        <p style={{ margin: "0 0 24px", fontSize: 13, color: t.textDim, textAlign: "center" }}>로그인</p>
+        {loading ? <div style={{ textAlign: "center", padding: 20, color: t.textDim }}>로딩 중...</div> : (
+          <>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontSize: 12, color: t.textDim, marginBottom: 6 }}>사용자</label>
+              <select value={selectedName} onChange={e => setSelectedName(e.target.value)} style={{ ...inputS, cursor: "pointer" }}>
+                <option value="">선택해주세요</option>
+                {usersList.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
+              </select>
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: "block", fontSize: 12, color: t.textDim, marginBottom: 6 }}>비밀번호</label>
+              <input type="password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} style={inputS} placeholder="비밀번호" />
+            </div>
+            {error && <div style={{ marginBottom: 12, padding: "8px 12px", background: "rgba(207,34,46,0.15)", border: "1px solid rgba(207,34,46,0.3)", borderRadius: 6, color: "#f85149", fontSize: 12 }}>{error}</div>}
+            <button onClick={handleLogin} style={{ width: "100%", padding: "10px 0", background: t.btnBg, border: "none", borderRadius: 6, color: t.btnFg, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>로그인</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── 사용자 관리 (관리자 전용) ───
+function AdminPage({ currentUser, onClose }) {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [editUser, setEditUser] = useState(null);
+  const [form, setForm] = useState({ name: '', password: '', role: 'editor' });
+  const [error, setError] = useState('');
+
+  const loadUsers = useCallback(() => { api.getUsers().then(setUsers).catch(() => {}).finally(() => setLoading(false)); }, []);
+  useEffect(loadUsers, [loadUsers]);
+
+  const t = themes.dark;
+  const ROLE_LABELS = { admin: '관리자', editor: '편집자', viewer: '뷰어' };
+
+  const handleSave = async () => {
+    setError('');
+    try {
+      if (editUser) {
+        const payload = { role: form.role };
+        if (form.name && form.name !== editUser.name) payload.name = form.name;
+        if (form.password) payload.password = form.password;
+        await api.updateUser(editUser.id, payload);
+      } else {
+        if (!form.name || !form.password) { setError('이름과 비밀번호를 입력해주세요'); return; }
+        await api.createUser(form);
+      }
+      setShowAdd(false); setEditUser(null); setForm({ name: '', password: '', role: 'editor' });
+      loadUsers();
+    } catch (err) { setError(err.message); }
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('이 사용자를 삭제하시겠습니까?')) return;
+    try { await api.deleteUser(id); loadUsers(); } catch (err) { alert(err.message); }
+  };
+
+  const inputS = { width: "100%", padding: "8px 10px", background: t.inputBg, border: `1px solid ${t.border}`, borderRadius: 6, color: t.text, fontSize: 13, outline: "none" };
+
+  return (
+    <div style={{ padding: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>사용자 관리</h3>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => { setShowAdd(true); setEditUser(null); setForm({ name: '', password: '', role: 'editor' }); setError(''); }} style={{ padding: "6px 14px", background: t.btnBg, border: "none", borderRadius: 6, color: t.btnFg, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>+ 추가</button>
+          <button onClick={onClose} style={{ padding: "6px 14px", background: "transparent", border: `1px solid ${t.border}`, borderRadius: 6, color: t.textDim, fontSize: 12, cursor: "pointer" }}>닫기</button>
+        </div>
+      </div>
+      {loading ? <div style={{ color: t.textDim, padding: 20 }}>로딩 중...</div> : (
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>{["이름", "역할", "가입일", ""].map((h, i) => <th key={i} style={{ padding: "8px 12px", borderBottom: `2px solid ${t.border}`, textAlign: "left", fontSize: 12, color: t.textDim }}>{h}</th>)}</tr>
+          </thead>
+          <tbody>
+            {users.map(u => (
+              <tr key={u.id} style={{ borderBottom: `1px solid ${t.border}` }}>
+                <td style={{ padding: "10px 12px", fontSize: 13 }}>{u.name}</td>
+                <td style={{ padding: "10px 12px", fontSize: 12 }}><span style={{ padding: "2px 8px", borderRadius: 10, fontSize: 11, background: u.role === 'admin' ? 'rgba(130,80,160,0.2)' : u.role === 'editor' ? 'rgba(80,130,160,0.2)' : 'rgba(128,128,128,0.2)', color: u.role === 'admin' ? '#b090d0' : u.role === 'editor' ? '#80b8d8' : '#999' }}>{ROLE_LABELS[u.role]}</span></td>
+                <td style={{ padding: "10px 12px", fontSize: 12, color: t.textDim }}>{u.createdAt ? new Date(u.createdAt).toLocaleDateString('ko-KR') : '-'}</td>
+                <td style={{ padding: "10px 12px", textAlign: "right" }}>
+                  <button onClick={() => { setEditUser(u); setForm({ name: u.name, password: '', role: u.role }); setShowAdd(true); setError(''); }} style={{ padding: "4px 10px", background: "transparent", border: `1px solid ${t.border}`, borderRadius: 4, color: t.textDim, fontSize: 11, cursor: "pointer", marginRight: 6 }}>수정</button>
+                  {u.id !== currentUser.id && <button onClick={() => handleDelete(u.id)} style={{ padding: "4px 10px", background: "transparent", border: "1px solid rgba(207,34,46,0.3)", borderRadius: 4, color: "#f85149", fontSize: 11, cursor: "pointer" }}>삭제</button>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {showAdd && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+          <div style={{ background: t.headerBg, borderRadius: 12, padding: 24, width: 320, border: `1px solid ${t.border}` }}>
+            <h4 style={{ margin: "0 0 16px", fontSize: 14 }}>{editUser ? '사용자 수정' : '사용자 추가'}</h4>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: "block", fontSize: 11, color: t.textDim, marginBottom: 4 }}>이름</label>
+              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} style={inputS} />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: "block", fontSize: 11, color: t.textDim, marginBottom: 4 }}>{editUser ? '새 비밀번호 (빈칸이면 유지)' : '비밀번호'}</label>
+              <input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} style={inputS} />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontSize: 11, color: t.textDim, marginBottom: 4 }}>역할</label>
+              <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} style={{ ...inputS, cursor: "pointer" }}>
+                <option value="admin">관리자</option>
+                <option value="editor">편집자</option>
+                <option value="viewer">뷰어</option>
+              </select>
+            </div>
+            {error && <div style={{ marginBottom: 12, padding: "6px 10px", background: "rgba(207,34,46,0.15)", borderRadius: 4, color: "#f85149", fontSize: 11 }}>{error}</div>}
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => { setShowAdd(false); setEditUser(null); }} style={{ padding: "7px 14px", background: "transparent", border: `1px solid ${t.border}`, borderRadius: 6, color: t.textDim, fontSize: 12, cursor: "pointer" }}>취소</button>
+              <button onClick={handleSave} style={{ padding: "7px 14px", background: t.btnBg, border: "none", borderRadius: 6, color: t.btnFg, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{editUser ? '수정' : '추가'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── App 래퍼 (인증 + 데이터 로드) ───
+function App() {
+  const [authState, setAuthState] = useState('checking'); // checking | setup | login | authenticated
+  const [currentUser, setCurrentUser] = useState(null);
+  const [initialData, setInitialData] = useState(null);
+
+  useEffect(() => {
+    // 1) 셋업 필요 여부 확인
+    api.setupStatus()
+      .then(status => {
+        if (status.needsSetup) {
+          setAuthState('setup');
+          return;
+        }
+        // 2) 기존 세션 확인
+        return api.me()
+          .then(user => {
+            setCurrentUser(user);
+            return api.loadInitial();
+          })
+          .then(data => {
+            if (data) { setInitialData(data); setAuthState('authenticated'); }
+          });
+      })
+      .catch(() => setAuthState('login'));
+  }, []);
+
+  const loadDataAndAuth = (user) => {
+    setCurrentUser(user);
+    api.loadInitial().then(data => { setInitialData(data); setAuthState('authenticated'); });
+  };
+
+  if (authState === 'checking') {
+    const t = themes.dark;
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: t.bg, color: t.textDim, fontSize: 14, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+        데이터 로딩 중...
+      </div>
+    );
+  }
+
+  if (authState === 'setup') {
+    return <SetupPage onSetupComplete={loadDataAndAuth} />;
+  }
+
+  if (authState === 'login') {
+    return <LoginPage onLogin={loadDataAndAuth} />;
+  }
+
+  if (!initialData) {
+    const t = themes.dark;
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: t.bg, color: t.textDim, fontSize: 14, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+        데이터 로딩 중...
+      </div>
+    );
+  }
+
+  return <ArtSchedule initialData={initialData} currentUser={currentUser} onLogout={() => { api.logout(); setAuthState('login'); setCurrentUser(null); setInitialData(null); }} />;
 }

@@ -2,8 +2,10 @@
   "name": "artboard",
   "version": "1.0.0",
   "description": "",
-  "main": "init_data.js",
+  "main": "server/server.js",
   "scripts": {
+    "start": "node server/server.js",
+    "migrate": "node server/migrate.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -23,5 +25,11 @@
     "@babel/core": "^7.29.0",
     "@babel/plugin-transform-react-jsx": "^7.28.6",
     "@babel/preset-env": "^7.29.0"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3"
   }
 }
